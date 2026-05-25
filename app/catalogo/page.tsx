@@ -95,12 +95,20 @@ export default async function CatalogoPage() {
     <main className="min-h-screen bg-[#050505] text-stone-100">
       <section className="relative overflow-hidden border-b border-[#d8b76a]/15 bg-[radial-gradient(circle_at_top,rgba(216,183,106,0.2),transparent_36%),linear-gradient(135deg,#050505_0%,#11100d_54%,#050505_100%)] px-6 py-16 sm:px-10 lg:px-12">
         <div className="mx-auto max-w-7xl">
-          <Link
-            href="/"
-            className="text-xs font-semibold uppercase tracking-[0.28em] text-[#d8b76a] transition hover:text-[#f2d78b]"
-          >
-            AMARO DOS REIS PARFUM
-          </Link>
+          <nav className="flex flex-col gap-4 text-xs font-semibold uppercase tracking-[0.24em] text-stone-400 sm:flex-row sm:items-center sm:justify-between">
+            <Link
+              href="/"
+              className="text-[#d8b76a] transition hover:text-[#f2d78b]"
+            >
+              AMARO DOS REIS PARFUM
+            </Link>
+            <Link
+              href="/"
+              className="inline-flex w-fit items-center border border-[#d8b76a]/30 px-4 py-3 text-[#f2d78b] transition hover:border-[#f2d78b] hover:bg-[#d8b76a]/10"
+            >
+              Voltar ao inicio
+            </Link>
+          </nav>
           <div className="mt-12 max-w-3xl">
             <p className="text-xs font-semibold uppercase tracking-[0.36em] text-[#d8b76a]">
               Catálogo
