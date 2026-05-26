@@ -27,16 +27,10 @@ export default async function PerfumePage({ params }: PerfumePageProps) {
   }
 
   return (
-    <main className="min-h-screen bg-[#050505] text-stone-100">
+    <main className="bg-[#050505] text-stone-100">
       <section className="relative overflow-hidden border-b border-[#d8b76a]/20 bg-[radial-gradient(circle_at_top_left,rgba(216,183,106,0.2),transparent_30%),linear-gradient(135deg,#050505_0%,#11100d_52%,#050505_100%)] px-6 py-14 sm:px-10 lg:px-12">
         <div className="mx-auto max-w-6xl">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-            <Link
-              href="/"
-              className="text-xs font-semibold uppercase tracking-[0.28em] text-[#d8b76a] transition hover:text-[#f2d78b]"
-            >
-              AMARO DOS REIS PARFUM
-            </Link>
+          <div className="flex justify-start">
             <Link
               href="/catalogo"
               className="inline-flex items-center justify-center rounded-full border border-[#d8b76a]/40 px-5 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-[#f2d78b] transition hover:border-[#f2d78b] hover:bg-[#d8b76a]/10"

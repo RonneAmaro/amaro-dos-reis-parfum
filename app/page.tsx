@@ -22,33 +22,10 @@ const featuredPerfumes = perfumes.slice(0, 3);
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-[#050505] text-stone-100">
+    <main className="bg-[#050505] text-stone-100">
       <section className="relative isolate overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(202,162,82,0.22),transparent_34%),linear-gradient(135deg,#050505_0%,#11100d_48%,#050505_100%)]">
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#d8b76a] to-transparent opacity-70" />
-        <header className="absolute inset-x-0 top-0 z-10 px-6 py-5 sm:px-10 lg:px-12">
-          <nav className="mx-auto flex max-w-7xl flex-col gap-4 text-xs font-semibold uppercase tracking-[0.24em] text-stone-400 sm:flex-row sm:items-center sm:justify-between">
-            <a href="/" className="text-[#d8b76a] transition hover:text-[#f2d78b]">
-              AMARO DOS REIS
-            </a>
-            <div className="flex flex-wrap gap-x-6 gap-y-3">
-              <a href="/" className="transition hover:text-[#f2d78b]">
-                Inicio
-              </a>
-              <a href="/catalogo" className="transition hover:text-[#f2d78b]">
-                Catalogo
-              </a>
-              <a
-                href="https://api.whatsapp.com/send?text=Ola,%20quero%20conhecer%20os%20perfumes%20da%20Amaro%20dos%20Reis%20Parfum."
-                target="_blank"
-                rel="noreferrer"
-                className="transition hover:text-[#f2d78b]"
-              >
-                WhatsApp
-              </a>
-            </div>
-          </nav>
-        </header>
-        <div className="mx-auto grid min-h-screen max-w-7xl items-center gap-12 px-6 py-16 sm:px-10 lg:grid-cols-[1.04fr_0.96fr] lg:px-12">
+        <div className="mx-auto grid min-h-[calc(100vh-80px)] max-w-7xl items-center gap-12 px-6 py-16 sm:px-10 lg:grid-cols-[1.04fr_0.96fr] lg:px-12">
           <div className="max-w-3xl">
             <p className="mb-5 text-xs font-semibold uppercase tracking-[0.36em] text-[#d8b76a]">
               Perfumaria autoral premium
