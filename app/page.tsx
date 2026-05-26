@@ -1,65 +1,24 @@
+import { perfumes } from "@/lib/perfumes";
+
 const collections = [
   {
     name: "Executive Collection",
     description:
-      "Fragrancias de presenca sofisticada, criadas para rotina profissional, encontros e momentos de decisao.",
+      "Fragrâncias de presença sofisticada, criadas para rotina profissional, encontros e momentos de decisão.",
   },
   {
     name: "Oriental Collection",
     description:
-      "Acordes ambarados, especiados e intensos, com assinatura marcante inspirada na perfumaria arabe.",
+      "Acordes ambarados, especiados e intensos, com assinatura marcante inspirada na perfumaria árabe.",
   },
   {
     name: "Feminine Collection",
     description:
-      "Perfumes envolventes, luminosos e memoraveis, desenhados para expressar elegancia e personalidade.",
+      "Perfumes envolventes, luminosos e memoráveis, desenhados para expressar elegância e personalidade.",
   },
 ];
 
-const perfumes = [
-  {
-    name: "DOMINARE",
-    inspiration: "Aventus",
-    family: "Amadeirado frutado",
-    description:
-      "Imponente e refinado, combina frescor vibrante com profundidade elegante para uma presenca inesquecivel.",
-  },
-  {
-    name: "SULTAN NOIR",
-    inspiration: "Asad",
-    family: "Oriental especiado",
-    description:
-      "Quente, envolvente e poderoso, revela especiarias nobres sobre uma base escura e sofisticada.",
-  },
-  {
-    name: "AZURE SPORT",
-    inspiration: "Allure Homme Sport",
-    family: "Citrico aromatico",
-    description:
-      "Energia limpa e moderna, com frescor esportivo equilibrado por uma assinatura elegante.",
-  },
-  {
-    name: "SAMARAH ROSE",
-    inspiration: "Sabah Al Ward",
-    family: "Floral oriental",
-    description:
-      "Rosas delicadas, doçura macia e um toque oriental criam uma fragrancia feminina e radiante.",
-  },
-  {
-    name: "MOON CANDY",
-    inspiration: "Fantasy",
-    family: "Gourmand floral",
-    description:
-      "Doce na medida certa, encantadora e jovial, com rastro cremoso para momentos leves e memoraveis.",
-  },
-  {
-    name: "IGNIS",
-    inspiration: "Fahrenheit",
-    family: "Couro aromatico",
-    description:
-      "Intenso e magnetico, une couro, calor e personalidade para quem prefere fragrancias de impacto.",
-  },
-];
+const featuredPerfumes = perfumes.slice(0, 3);
 
 export default function Home() {
   return (
@@ -206,9 +165,9 @@ export default function Home() {
           </div>
 
           <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {perfumes.map((perfume) => (
+            {featuredPerfumes.map((perfume) => (
               <article
-                key={perfume.name}
+                key={perfume.slug}
                 className="border border-white/10 bg-gradient-to-b from-white/[0.055] to-white/[0.025] p-6"
               >
                 <p className="text-xs uppercase tracking-[0.26em] text-stone-500">
@@ -218,11 +177,19 @@ export default function Home() {
                   {perfume.name}
                 </h3>
                 <p className="mt-3 text-sm font-medium uppercase tracking-[0.22em] text-stone-300">
-                  {perfume.family}
+                  {perfume.olfactiveFamily}
                 </p>
                 <p className="mt-5 leading-7 text-stone-400">
-                  {perfume.description}
+                  {perfume.shortDescription}
                 </p>
+                <div className="mt-6 flex flex-wrap items-center gap-3">
+                  <span className="rounded-full border border-[#d8b76a]/30 px-3 py-1 text-xs uppercase tracking-[0.2em] text-[#f2d78b]">
+                    {perfume.collection}
+                  </span>
+                  <span className="rounded-full border border-white/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-stone-200">
+                    R$ {perfume.price.toFixed(2).replace(".", ",")}
+                  </span>
+                </div>
               </article>
             ))}
           </div>
