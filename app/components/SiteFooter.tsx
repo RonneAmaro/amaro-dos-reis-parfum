@@ -1,46 +1,56 @@
 import Link from "next/link";
+import { createWhatsAppLink } from "@/lib/whatsapp";
 
-const footerLinks = [
-  { href: "/catalogo", label: "Catálogo" },
-  { href: "/colecoes", label: "Coleções" },
-  { href: "/sobre", label: "Sobre" },
-  { href: "/contato", label: "Contato" },
-];
+const whatsappHref = createWhatsAppLink(
+  "Olá! Quero conhecer os perfumes da Amaro dos Reis Parfum."
+);
 
-export function SiteFooter() {
+export default function SiteFooter() {
   return (
-    <footer className="border-t border-[#d8b76a]/20 bg-[#050505] px-6 py-12 text-stone-300 sm:px-10 lg:px-12">
-      <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[1.15fr_0.85fr]">
+    <footer className="border-t border-white/10 bg-[#030303] px-6 py-12 text-stone-500 sm:px-10 lg:px-12">
+      <div className="mx-auto grid max-w-7xl gap-10 md:grid-cols-[1fr_auto] md:items-start">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.28em] text-[#f2d78b]">
-            AMARO DOS REIS PARFUM
+          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-gold">
+            Amaro dos Reis Parfum
           </p>
-          <p className="mt-4 max-w-xl leading-7 text-stone-400">
-            Perfumes autorais inspirados em grandes fragrâncias internacionais e
-            orientais.
-          </p>
-          <p className="mt-6 max-w-2xl text-sm leading-6 text-stone-500">
-            As referências olfativas são usadas apenas para orientar o perfil
-            aromático das fragrâncias.
+          <p className="mt-4 max-w-xl leading-7">
+            Perfumaria autoral com referencias olfativas premium, nomes
+            proprios e curadoria proxima.
           </p>
         </div>
 
-        <div className="lg:text-right">
-          <nav className="flex flex-wrap gap-x-6 gap-y-3 text-xs font-semibold uppercase tracking-[0.22em] text-stone-400 lg:justify-end">
-            {footerLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="transition hover:text-[#f2d78b]"
-              >
-                {link.label}
-              </Link>
-            ))}
-          </nav>
-          <p className="mt-8 text-sm text-stone-500">
-            © 2026 Amaro dos Reis Parfum. Todos os direitos reservados.
-          </p>
+        <div className="flex flex-wrap gap-x-6 gap-y-3 text-xs font-semibold uppercase tracking-[0.22em]">
+          <Link href="/" className="transition hover:text-gold-light">
+            Inicio
+          </Link>
+          <Link href="/catalogo" className="transition hover:text-gold-light">
+            Catalogo
+          </Link>
+          <Link
+            href="/disponibilidade"
+            className="transition hover:text-gold-light"
+          >
+            Disponibilidade
+          </Link>
+          <Link href="/contato" className="transition hover:text-gold-light">
+            Contato
+          </Link>
+          <a
+            href={whatsappHref}
+            target="_blank"
+            rel="noreferrer"
+            className="transition hover:text-gold-light"
+          >
+            WhatsApp
+          </a>
         </div>
+      </div>
+
+      <div className="mx-auto mt-10 max-w-7xl border-t border-white/10 pt-6 text-xs leading-6">
+        <p>
+          As referencias olfativas indicam inspiracoes de estilo e familia
+          olfativa. Amaro dos Reis Parfum e uma marca independente.
+        </p>
       </div>
     </footer>
   );

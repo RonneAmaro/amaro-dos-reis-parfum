@@ -1,50 +1,50 @@
-const WHATSAPP_LINK = "#";
+import Link from "next/link";
+import { createWhatsAppLink } from "@/lib/whatsapp";
 
-const contactCards = [
-  "Atendimento local",
-  "Perfumes de 50ml",
-  "Linha Tradicional R$ 80",
-  "Linha Árabe Premium R$ 120",
-];
+const whatsappHref = createWhatsAppLink(
+  "Olá! Quero conhecer os perfumes da Amaro dos Reis Parfum."
+);
+const isWhatsAppConfigured = whatsappHref !== "#";
 
 export default function ContatoPage() {
   return (
-    <main className="bg-[#050505] text-stone-100">
-      <section className="border-b border-[#d8b76a]/20 bg-[radial-gradient(circle_at_top,rgba(216,183,106,0.18),transparent_34%),linear-gradient(135deg,#050505_0%,#11100d_56%,#050505_100%)] px-6 py-16 sm:px-10 lg:px-12">
-        <div className="mx-auto max-w-7xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.34em] text-[#d8b76a]">
-            Atendimento
+    <main className="min-h-screen bg-[#050505] text-stone-100">
+      <section className="premium-bg relative overflow-hidden border-b border-gold/15 px-6 py-16 sm:px-10 lg:px-12">
+        <div className="absolute right-[12%] top-16 h-72 w-72 rounded-full bg-gold/10 blur-3xl" />
+        <div className="mx-auto max-w-5xl">
+          <p className="text-xs font-semibold uppercase tracking-[0.36em] text-gold">
+            Contato
           </p>
-          <h1 className="mt-5 max-w-4xl text-4xl font-semibold uppercase leading-tight text-white sm:text-6xl">
-            Fale com a Amaro dos Reis Parfum
+          <h1 className="mt-5 text-4xl font-semibold uppercase leading-tight text-white sm:text-6xl">
+            Fale com a Amaro dos Reis Parfum.
           </h1>
-          <p className="mt-6 max-w-3xl text-lg leading-8 text-stone-300">
-            Para pedidos, dúvidas ou escolha da fragrância ideal, fale
-            diretamente pelo WhatsApp.
+          <p className="mt-6 max-w-2xl text-lg leading-8 text-stone-300">
+            Atendimento local e producao em pequenos lotes. Consulte
+            disponibilidade das fragrancias.
           </p>
-          <a
-            id="whatsapp"
-            href={WHATSAPP_LINK}
-            className="mt-8 inline-flex min-h-12 items-center justify-center rounded-full bg-[#d8b76a] px-8 text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-[#f2d78b]"
-          >
-            WhatsApp
-          </a>
-        </div>
-      </section>
 
-      <section className="px-6 py-16 sm:px-10 lg:px-12">
-        <div className="mx-auto grid max-w-7xl gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {contactCards.map((card) => (
-            <article
-              key={card}
-              className="rounded-lg border border-[#d8b76a]/20 bg-gradient-to-b from-white/[0.055] to-white/[0.02] p-6"
+          <div className="mt-10 flex flex-col gap-3 sm:flex-row">
+            <a
+              href={whatsappHref}
+              target={isWhatsAppConfigured ? "_blank" : undefined}
+              rel={isWhatsAppConfigured ? "noreferrer" : undefined}
+              aria-disabled={!isWhatsAppConfigured}
+              className="inline-flex min-h-12 items-center justify-center rounded-full bg-gold px-8 text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-gold-light"
             >
-              <p className="text-xs font-semibold uppercase tracking-[0.26em] text-[#d8b76a]">
-                Amaro dos Reis
-              </p>
-              <h2 className="mt-4 text-xl font-semibold text-white">{card}</h2>
-            </article>
-          ))}
+              Chamar no WhatsApp
+            </a>
+            <Link
+              href="/catalogo"
+              className="inline-flex min-h-12 items-center justify-center rounded-full border border-gold/45 px-8 text-sm font-semibold uppercase tracking-[0.18em] text-gold-light transition hover:border-gold-light hover:bg-gold/10"
+            >
+              Ver catalogo
+            </Link>
+          </div>
+          {!isWhatsAppConfigured ? (
+            <p className="mt-5 text-sm text-stone-500">
+              WhatsApp será configurado em breve.
+            </p>
+          ) : null}
         </div>
       </section>
     </main>

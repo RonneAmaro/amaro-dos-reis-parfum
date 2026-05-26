@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { SiteFooter } from "./components/SiteFooter";
-import { SiteHeader } from "./components/SiteHeader";
+import SiteFooter from "./components/SiteFooter";
+import SiteHeader from "./components/SiteHeader";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -15,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Amaro dos Reis Parfum",
+  title: "AMARO DOS REIS PARFUM",
   description:
-    "Perfumes autorais inspirados em grandes fragrâncias internacionais e orientais.",
+    "Perfumes autorais premium inspirados em grandes fragrâncias internacionais e orientais.",
 };
 
 export default function RootLayout({
@@ -30,9 +30,9 @@ export default function RootLayout({
       lang="pt-BR"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col bg-[#050505] text-stone-100">
+      <body className="min-h-full bg-background text-foreground">
         <SiteHeader />
-        <div className="flex-1">{children}</div>
+        {children}
         <SiteFooter />
       </body>
     </html>

@@ -2,165 +2,256 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { perfumes, type Perfume } from "@/lib/perfumes";
+import {
+  availabilityLabels,
+  createPerfumeMessage,
+  formatPerfumePrice,
+  lineLabels,
+  perfumeCommerce,
+  perfumeSlug,
+  type PerfumeCommerce,
+} from "@/lib/perfumes";
+import { createWhatsAppLink } from "@/lib/whatsapp";
 
-const collections = [
+const filters = [
   "Todas",
   "Executive Collection",
   "Oriental Collection",
   "Feminine Collection",
-] as const;
+  "Masculino",
+  "Feminino",
+  "Tradicional R$ 80",
+  "Arabe Premium R$ 120",
+];
 
-function bottleLabel(bottleType: Perfume["bottleType"]) {
-  return bottleType === "tradicional"
-    ? "Tradicional 50ml"
-    : "Árabe Premium 50ml";
+function normalize(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function matchesFilter(perfume: PerfumeCommerce, filter: string) {
+  if (filter === "Todas") {
+    return true;
+  }
+
+  if (filter === "Masculino" || filter === "Feminino") {
+    return perfume.audience === filter;
+  }
+
+  if (filter === "Tradicional R$ 80") {
+    return perfume.line === "traditional";
+  }
+
+  if (filter === "Arabe Premium R$ 120") {
+    return perfume.line === "arabic_premium";
+  }
+
+  return perfume.collection === filter;
 }
 
 export default function CatalogoPage() {
-  const [selectedCollection, setSelectedCollection] =
-    useState<(typeof collections)[number]>("Todas");
+  const [query, setQuery] = useState("");
+  const [activeFilter, setActiveFilter] = useState("Todas");
 
   const filteredPerfumes = useMemo(() => {
-    if (selectedCollection === "Todas") {
-      return perfumes;
-    }
+    const normalizedQuery = normalize(query.trim());
 
-    return perfumes.filter((perfume) => perfume.collection === selectedCollection);
-  }, [selectedCollection]);
+    return perfumeCommerce.filter((perfume) => {
+      const searchText = normalize(
+        [
+          perfume.name,
+          perfume.inspiration,
+          perfume.collection,
+          perfume.family,
+          perfume.audience,
+          lineLabels[perfume.line],
+          ...perfume.tags,
+        ].join(" ")
+      );
+
+      return (
+        matchesFilter(perfume, activeFilter) &&
+        (!normalizedQuery || searchText.includes(normalizedQuery))
+      );
+    });
+  }, [activeFilter, query]);
 
   return (
-    <main className="bg-[#050505] text-stone-100">
-      <section className="relative overflow-hidden border-b border-[#d8b76a]/20 bg-[radial-gradient(circle_at_top,rgba(216,183,106,0.2),transparent_32%),linear-gradient(135deg,#050505_0%,#11100d_54%,#050505_100%)] px-6 py-16 sm:px-10 lg:px-12">
+    <main className="min-h-screen bg-[#050505] text-stone-100">
+      <section className="premium-bg relative overflow-hidden border-b border-gold/15 px-6 py-16 sm:px-10 lg:px-12">
+        <div className="absolute left-[12%] top-10 h-56 w-56 rounded-full bg-gold/10 blur-3xl" />
         <div className="mx-auto max-w-7xl">
           <div className="max-w-3xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.36em] text-[#d8b76a]">
-              Catálogo
+            <p className="text-xs font-semibold uppercase tracking-[0.36em] text-gold">
+              Catalogo
             </p>
             <h1 className="mt-5 text-4xl font-semibold uppercase leading-tight text-white sm:text-6xl">
-              Catálogo Amaro dos Reis Parfum
+              Fragrancias autorais para presenca memoravel.
             </h1>
             <p className="mt-6 max-w-2xl text-base leading-8 text-stone-300 sm:text-lg">
-              Cada perfume tem nome autoral e referência olfativa própria, com
-              composição pensada para entregar presença, elegância e memorabilidade.
+              Escolha pelo estilo, pela familia olfativa ou pela referencia
+              aromatica.
             </p>
-          </div>
-
-          <div className="mt-8 flex flex-wrap gap-3">
-            {collections.map((collection) => {
-              const active = selectedCollection === collection;
-
-              return (
-                <button
-                  key={collection}
-                  type="button"
-                  onClick={() => setSelectedCollection(collection)}
-                  className={`rounded-full border px-4 py-2 text-sm font-semibold uppercase tracking-[0.2em] transition ${
-                    active
-                      ? "border-[#d8b76a] bg-[#d8b76a] text-black"
-                      : "border-[#d8b76a]/35 bg-white/[0.03] text-stone-100 hover:border-[#f2d78b]"
-                  }`}
-                >
-                  {collection}
-                </button>
-              );
-            })}
           </div>
         </div>
       </section>
 
       <section className="px-6 py-14 sm:px-10 lg:px-12">
         <div className="mx-auto max-w-7xl">
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {filteredPerfumes.map((perfume) => (
-              <article
-                key={perfume.slug}
-                className="flex min-h-[460px] flex-col rounded-[1.6rem] border border-white/10 bg-gradient-to-b from-white/[0.065] to-white/[0.02] p-6 shadow-[0_20px_80px_rgba(0,0,0,0.35)]"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-[0.26em] text-stone-500">
-                      {perfume.collection}
+          <div className="mb-8 premium-surface px-5 py-4 text-sm leading-7 text-stone-300">
+            Producao em pequenos lotes. Consulte disponibilidade antes de
+            finalizar o pedido.
+          </div>
+
+          <div className="mb-8 grid gap-4 lg:grid-cols-[0.95fr_1.05fr] lg:items-start">
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
+                Buscar perfume
+              </span>
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Nome, tag, familia ou inspiracao"
+                className="mt-3 min-h-12 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition placeholder:text-stone-600 focus:border-gold"
+              />
+            </label>
+
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
+                Filtros
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {filters.map((filter) => {
+                  const isActive = activeFilter === filter;
+
+                  return (
+                    <button
+                      key={filter}
+                      type="button"
+                      onClick={() => setActiveFilter(filter)}
+                      className={`min-h-10 rounded-full border px-4 text-xs font-semibold uppercase tracking-[0.14em] transition ${
+                        isActive
+                          ? "border-gold bg-gold text-black"
+                          : "border-gold/30 bg-gold/10 text-gold-light hover:border-gold-light"
+                      }`}
+                    >
+                      {filter}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="mb-6 flex flex-col justify-between gap-3 text-sm text-stone-400 sm:flex-row sm:items-center">
+            <p>
+              {filteredPerfumes.length} fragrancia
+              {filteredPerfumes.length === 1 ? "" : "s"} encontrada
+              {filteredPerfumes.length === 1 ? "" : "s"}.
+            </p>
+            <Link
+              href="/disponibilidade"
+              className="w-fit text-xs font-semibold uppercase tracking-[0.2em] text-gold-light transition hover:text-gold"
+            >
+              Ver disponibilidade
+            </Link>
+          </div>
+
+          {filteredPerfumes.length === 0 ? (
+            <div className="premium-surface p-8 text-center">
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-gold">
+                Nenhum resultado
+              </p>
+              <h2 className="mt-4 text-2xl font-semibold text-white">
+                Tente outra busca ou remova filtros.
+              </h2>
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {filteredPerfumes.map((perfume) => (
+                <article
+                  key={perfume.name}
+                  className="premium-surface flex min-h-[470px] flex-col p-6 transition hover:-translate-y-1 hover:border-gold/55"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.24em] text-gold/80">
+                        {perfume.collection}
+                      </p>
+                      <h2 className="mt-4 text-2xl font-semibold uppercase tracking-[0.08em] text-white">
+                        {perfume.name}
+                      </h2>
+                    </div>
+                    <p className="shrink-0 border border-gold/30 bg-gold/10 px-3 py-2 text-sm font-semibold text-gold-light">
+                      {formatPerfumePrice(perfume)}
                     </p>
-                    <h2 className="mt-4 text-2xl font-semibold uppercase tracking-[0.08em] text-[#f2d78b]">
-                      {perfume.name}
-                    </h2>
-                    <p className="mt-2 text-sm uppercase tracking-[0.24em] text-stone-300">
+                  </div>
+
+                  <div className="mt-6 border-y border-white/10 py-4">
+                    <p className="text-[10px] uppercase tracking-[0.24em] text-stone-500">
+                      Inspiracao discreta
+                    </p>
+                    <p className="mt-2 text-sm font-medium text-stone-200">
                       {perfume.inspiration}
                     </p>
                   </div>
-                  <div className="shrink-0 rounded-full border border-[#d8b76a]/35 px-3 py-2 text-sm font-semibold text-[#f2d78b]">
-                    R$ {perfume.price.toFixed(2).replace(".", ",")}
-                  </div>
-                </div>
 
-                <p className="mt-5 text-sm leading-7 text-stone-300">
-                  {perfume.shortDescription}
-                </p>
+                  <div className="mt-5 grid gap-3 text-sm text-stone-300 sm:grid-cols-2">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-[0.22em] text-stone-500">
+                        Familia
+                      </p>
+                      <p className="mt-2">{perfume.family}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-[0.22em] text-stone-500">
+                        Disponibilidade
+                      </p>
+                      <p className="mt-2 text-gold-light">
+                        {availabilityLabels[perfume.availabilityStatus]}
+                      </p>
+                    </div>
+                  </div>
 
-                <div className="mt-6 grid gap-3 text-sm text-stone-200 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-[10px] uppercase tracking-[0.24em] text-stone-500">
-                      Tipo
-                    </p>
-                    <p className="mt-2">{bottleLabel(perfume.bottleType)}</p>
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    {perfume.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-stone-300"
+                      >
+                        {tag}
+                      </span>
+                    ))}
                   </div>
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-[10px] uppercase tracking-[0.24em] text-stone-500">
-                      Família
-                    </p>
-                    <p className="mt-2">{perfume.olfactiveFamily}</p>
-                  </div>
-                </div>
 
-                <div className="mt-6 space-y-3 text-sm">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-[0.24em] text-stone-500">
-                      Topo
-                    </p>
-                    <p className="mt-2 leading-7 text-stone-200">
-                      {perfume.topNotes.join(", ")}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-[0.24em] text-stone-500">
-                      Coração
-                    </p>
-                    <p className="mt-2 leading-7 text-stone-200">
-                      {perfume.heartNotes.join(", ")}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-[0.24em] text-stone-500">
-                      Fundo
-                    </p>
-                    <p className="mt-2 leading-7 text-stone-200">
-                      {perfume.baseNotes.join(", ")}
-                    </p>
-                  </div>
-                </div>
+                  <p className="mt-6 flex-1 leading-7 text-stone-400">
+                    {perfume.description}
+                  </p>
 
-                <div className="mt-8 flex flex-wrap gap-3">
-                  <Link
-                    href={`/perfumes/${perfume.slug}`}
-                    className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#d8b76a]/40 px-5 text-sm font-semibold uppercase tracking-[0.18em] text-[#f2d78b] transition hover:border-[#f2d78b] hover:bg-[#d8b76a]/10"
-                  >
-                    Ver detalhes
-                  </Link>
-                  <a
-                    href={`https://wa.me/?text=${encodeURIComponent(
-                      `Olá, quero pedir o perfume ${perfume.name} da Amaro dos Reis Parfum.`
-                    )}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex min-h-12 items-center justify-center rounded-full bg-[#d8b76a] px-5 text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-[#f2d78b]"
-                  >
-                    Pedir no WhatsApp
-                  </a>
-                </div>
-              </article>
-            ))}
-          </div>
+                  <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                    <Link
+                      href={`/perfumes/${perfumeSlug(perfume)}`}
+                      className="inline-flex min-h-11 flex-1 items-center justify-center rounded-full bg-gold px-5 text-xs font-semibold uppercase tracking-[0.16em] text-black transition hover:bg-gold-light"
+                    >
+                      Ver detalhes
+                    </Link>
+                    <a
+                      href={createWhatsAppLink(
+                        createPerfumeMessage(perfume.name)
+                      )}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex min-h-11 flex-1 items-center justify-center rounded-full border border-gold/45 px-5 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold-light hover:bg-gold/10"
+                    >
+                      Pedir no WhatsApp
+                    </a>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
         </div>
       </section>
     </main>

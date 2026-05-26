@@ -1,36 +1,34 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AMARO DOS REIS PARFUM
 
-## Getting Started
+Site em Next.js para catalogo publico da Amaro dos Reis Parfum.
 
-First, run the development server:
+## Rodar localmente
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm.cmd install
+npm.cmd run dev -- -p 3001
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Abra `http://localhost:3001` no navegador.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Variaveis opcionais
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Configure o numero publico do WhatsApp quando quiser habilitar os botoes:
 
-## Learn More
+```bash
+NEXT_PUBLIC_WHATSAPP_NUMBER=5599999999999
+```
 
-To learn more about Next.js, take a look at the following resources:
+Nao commitar `.env.local`. Esse arquivo pode conter configuracoes locais e deve
+ficar fora do repositorio.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Deploy na Vercel
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Crie ou importe o projeto na Vercel pelo GitHub.
+2. Selecione o repositorio `RonneAmaro/amaro-dos-reis-parfum`.
+3. Use o framework `Next.js`.
+4. Configure o build command como `npm run build`.
+5. Mantenha o output no padrao do Next.js.
+6. Se quiser habilitar os botoes de WhatsApp, configure a variavel opcional
+   `NEXT_PUBLIC_WHATSAPP_NUMBER` nas variaveis de ambiente da Vercel.
+7. Nunca suba `.env.local` para o GitHub.

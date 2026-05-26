@@ -1,309 +1,334 @@
-export type PerfumeCategory = "masculino" | "feminino" | "unissex";
+export type AvailabilityStatus = "available" | "limited" | "on_order";
+export type PerfumeLine = "traditional" | "arabic_premium";
+export type PerfumeAudience = "Masculino" | "Feminino" | "Unissex";
 
-export type Perfume = {
-  slug: string;
+export type PerfumeCommerce = {
   name: string;
   inspiration: string;
-  category: PerfumeCategory;
-  collection: "Executive Collection" | "Oriental Collection" | "Feminine Collection";
-  price: number;
-  shortDescription: string;
-  olfactiveFamily: string;
-  topNotes: string[];
-  heartNotes: string[];
-  baseNotes: string[];
-  longDescription: string;
-  bottleType: "tradicional" | "arabe";
+  collection: string;
+  family: string;
+  line: PerfumeLine;
+  priceCents: number;
+  sizeMl: number;
+  description: string;
+  audience: PerfumeAudience;
+  whatsappMessage: string;
+  indicatedFor: string[];
+  tags: string[];
+  availabilityStatus: AvailabilityStatus;
 };
 
-export const perfumes: Perfume[] = [
+export type Perfume = PerfumeCommerce & {
+  slug: string;
+  olfactiveFamily: string;
+  price: number;
+};
+
+const perfumeData: Omit<PerfumeCommerce, "whatsappMessage">[] = [
   {
-    slug: "noblis",
     name: "NOBLIS",
     inspiration: "Allure Homme",
-    category: "masculino",
     collection: "Executive Collection",
-    price: 80,
-    shortDescription:
-      "Fragrância masculina refinada, pensada para quem busca elegância discreta, presença limpa e sofisticação no dia a dia.",
-    olfactiveFamily: "Amadeirado especiado elegante",
-    topNotes: ["cítricos frescos", "mandarina", "especiarias suaves"],
-    heartNotes: ["pimenta", "cedro", "acordes aromáticos"],
-    baseNotes: ["sândalo", "âmbar", "baunilha", "almíscar"],
-    longDescription:
-      "Fragrância masculina refinada, pensada para quem busca elegância discreta, presença limpa e sofisticação no dia a dia.",
-    bottleType: "tradicional",
+    family: "Aromatico amadeirado",
+    line: "traditional",
+    priceCents: 8000,
+    sizeMl: 50,
+    description: "Elegante, versatil e sofisticado para uma presenca refinada.",
+    audience: "Masculino",
+    indicatedFor: ["Trabalho", "reunioes", "presenca refinada"],
+    tags: ["elegante", "masculino", "executivo", "classico"],
+    availabilityStatus: "available",
   },
   {
-    slug: "azure-sport",
     name: "AZURE SPORT",
     inspiration: "Allure Homme Sport",
-    category: "masculino",
     collection: "Executive Collection",
-    price: 80,
-    shortDescription:
-      "Fragrância fresca e energética, com sensação limpa, esportiva e elegante, ideal para dias quentes e rotina ativa.",
-    olfactiveFamily: "Fresco aquático amadeirado",
-    topNotes: ["laranja", "mandarina", "notas aquáticas"],
-    heartNotes: ["néroli", "pimenta", "cedro"],
-    baseNotes: ["almíscar branco", "âmbar", "baunilha"],
-    longDescription:
-      "Fragrância fresca e energética, com sensação limpa, esportiva e elegante, ideal para dias quentes e rotina ativa.",
-    bottleType: "tradicional",
+    family: "Citrico aromatico",
+    line: "traditional",
+    priceCents: 8000,
+    sizeMl: 50,
+    description: "Frescor moderno com energia limpa e assinatura elegante.",
+    audience: "Masculino",
+    indicatedFor: ["Dia a dia", "calor", "academia/rotina"],
+    tags: ["fresco", "esportivo", "aquatico", "verao"],
+    availabilityStatus: "available",
   },
   {
-    slug: "vitorium",
     name: "VITORIUM",
     inspiration: "Invictus",
-    category: "masculino",
     collection: "Executive Collection",
-    price: 80,
-    shortDescription:
-      "Perfume moderno, jovem e marcante, com contraste entre frescor aquático e fundo adocicado de presença.",
-    olfactiveFamily: "Aquático doce amadeirado",
-    topNotes: ["toranja", "acordes marinhos", "frescor cítrico"],
-    heartNotes: ["louro", "jasmim", "notas aromáticas"],
-    baseNotes: ["madeira guaiac", "âmbar cinza", "patchouli"],
-    longDescription:
-      "Perfume moderno, jovem e marcante, com contraste entre frescor aquático e fundo adocicado de presença.",
-    bottleType: "tradicional",
+    family: "Aquatico amadeirado",
+    line: "traditional",
+    priceCents: 8000,
+    sizeMl: 50,
+    description: "Vibrante, confiante e marcante para dias de conquista.",
+    audience: "Masculino",
+    indicatedFor: ["Conquistas", "eventos", "uso marcante"],
+    tags: ["jovem", "marcante", "aquatico", "doce"],
+    availabilityStatus: "available",
   },
   {
-    slug: "dominare",
-    name: "DOMINARE",
-    inspiration: "Aventus",
-    category: "masculino",
-    collection: "Executive Collection",
-    price: 80,
-    shortDescription:
-      "Fragrância de liderança, sucesso e confiança, com abertura frutada elegante e fundo amadeirado executivo.",
-    olfactiveFamily: "Frutado amadeirado sofisticado",
-    topNotes: ["abacaxi", "bergamota", "maçã", "groselha preta"],
-    heartNotes: ["bétula", "patchouli", "jasmim", "rosa"],
-    baseNotes: ["almíscar", "musgo", "âmbar gris", "baunilha"],
-    longDescription:
-      "Fragrância de liderança, sucesso e confiança, com abertura frutada elegante e fundo amadeirado executivo.",
-    bottleType: "tradicional",
-  },
-  {
-    slug: "ignis",
-    name: "IGNIS",
-    inspiration: "Fahrenheit",
-    category: "masculino",
-    collection: "Executive Collection",
-    price: 80,
-    shortDescription:
-      "Perfume intenso e clássico, com personalidade quente, couro marcante e presença madura.",
-    olfactiveFamily: "Couro amadeirado aromático",
-    topNotes: ["mandarina", "lavanda", "noz-moscada"],
-    heartNotes: ["violeta", "cedro", "notas especiadas"],
-    baseNotes: ["couro", "vetiver", "âmbar", "madeira"],
-    longDescription:
-      "Perfume intenso e clássico, com personalidade quente, couro marcante e presença madura.",
-    bottleType: "tradicional",
-  },
-  {
-    slug: "silverion-black",
-    name: "SILVERION BLACK",
-    inspiration: "Azzaro Silver Black",
-    category: "masculino",
-    collection: "Executive Collection",
-    price: 80,
-    shortDescription:
-      "Fragrância masculina moderna, limpa e versátil, com frescor elegante e fundo amadeirado.",
-    olfactiveFamily: "Aromático fresco amadeirado",
-    topNotes: ["maçã", "limão", "bergamota"],
-    heartNotes: ["coentro", "zimbro", "cardamomo"],
-    baseNotes: ["almíscar", "sândalo", "vetiver"],
-    longDescription:
-      "Fragrância masculina moderna, limpa e versátil, com frescor elegante e fundo amadeirado.",
-    bottleType: "tradicional",
-  },
-  {
-    slug: "scarlet-noir",
-    name: "SCARLET NOIR",
-    inspiration: "Scandal Pour Homme",
-    category: "masculino",
-    collection: "Executive Collection",
-    price: 80,
-    shortDescription:
-      "Fragrância sedutora, noturna e marcante, com doçura envolvente e presença masculina ousada.",
-    olfactiveFamily: "Âmbar doce amadeirado",
-    topNotes: ["mandarina", "sálvia esclareia"],
-    heartNotes: ["caramelo", "fava tonka"],
-    baseNotes: ["vetiver", "notas amadeiradas"],
-    longDescription:
-      "Fragrância sedutora, noturna e marcante, com doçura envolvente e presença masculina ousada.",
-    bottleType: "tradicional",
-  },
-  {
-    slug: "sultan-noir",
     name: "SULTAN NOIR",
     inspiration: "Asad",
-    category: "masculino",
     collection: "Oriental Collection",
-    price: 120,
-    shortDescription:
-      "Perfume oriental intenso, misterioso e poderoso, com assinatura quente, especiada e luxuosa.",
-    olfactiveFamily: "Oriental especiado ambarado",
-    topNotes: ["pimenta preta", "tabaco", "abacaxi"],
-    heartNotes: ["café", "patchouli", "íris"],
-    baseNotes: ["baunilha", "âmbar", "madeira seca", "benjoim"],
-    longDescription:
-      "Perfume oriental intenso, misterioso e poderoso, com assinatura quente, especiada e luxuosa.",
-    bottleType: "arabe",
+    family: "Oriental especiado",
+    line: "arabic_premium",
+    priceCents: 12000,
+    sizeMl: 50,
+    description:
+      "Quente, intenso e poderoso, com especiarias nobres e fundo escuro.",
+    audience: "Masculino",
+    indicatedFor: ["Noite", "encontros", "clima frio"],
+    tags: ["arabe", "intenso", "especiado", "noite"],
+    availabilityStatus: "limited",
   },
   {
-    slug: "noir-oud-royale",
-    name: "NOIR OUD ROYALE",
-    inspiration: "Club de Nuit Oud Armaf",
-    category: "unissex",
-    collection: "Oriental Collection",
-    price: 120,
-    shortDescription:
-      "Fragrância rica, intensa e sofisticada, com oud marcante e presença oriental premium.",
-    olfactiveFamily: "Oud oriental luxuoso",
-    topNotes: ["frutas exóticas", "bergamota", "especiarias"],
-    heartNotes: ["rosa", "jasmim", "oud"],
-    baseNotes: ["âmbar", "baunilha", "almíscar", "madeiras nobres"],
-    longDescription:
-      "Fragrância rica, intensa e sofisticada, com oud marcante e presença oriental premium.",
-    bottleType: "arabe",
+    name: "DOMINARE",
+    inspiration: "Aventus",
+    collection: "Executive Collection",
+    family: "Amadeirado frutado",
+    line: "traditional",
+    priceCents: 8000,
+    sizeMl: 50,
+    description:
+      "Imponente e refinado, com frescor vibrante e profundidade elegante.",
+    audience: "Masculino",
+    indicatedFor: ["Trabalho", "eventos", "presenca executiva"],
+    tags: ["executivo", "amadeirado", "sofisticado", "masculino"],
+    availabilityStatus: "available",
   },
   {
-    slug: "yasirah",
-    name: "YASIRAH",
-    inspiration: "Yara Lattafa",
-    category: "feminino",
-    collection: "Oriental Collection",
-    price: 120,
-    shortDescription:
-      "Perfume feminino doce, cremoso e delicado, com assinatura oriental macia e muito envolvente.",
-    olfactiveFamily: "Oriental gourmand cremoso",
-    topNotes: ["orquídea", "heliotrópio", "tangerina"],
-    heartNotes: ["frutas tropicais", "notas gourmand"],
-    baseNotes: ["baunilha", "almíscar", "sândalo"],
-    longDescription:
-      "Perfume feminino doce, cremoso e delicado, com assinatura oriental macia e muito envolvente.",
-    bottleType: "arabe",
+    name: "IGNIS",
+    inspiration: "Fahrenheit",
+    collection: "Executive Collection",
+    family: "Couro aromatico",
+    line: "traditional",
+    priceCents: 8000,
+    sizeMl: 50,
+    description: "Intenso e magnetico, com couro, calor e personalidade.",
+    audience: "Masculino",
+    indicatedFor: ["Noite", "personalidade", "fragrancia de impacto"],
+    tags: ["couro", "classico", "intenso", "masculino"],
+    availabilityStatus: "available",
   },
   {
-    slug: "altair-royale",
-    name: "ALTAIR ROYALE",
-    inspiration: "Althaïr Parfums de Marly",
-    category: "masculino",
-    collection: "Oriental Collection",
-    price: 120,
-    shortDescription:
-      "Fragrância sofisticada com baunilha nobre, especiarias elegantes e fundo quente de luxo.",
-    olfactiveFamily: "Baunilha oriental amadeirada",
-    topNotes: ["flor de laranjeira", "bergamota", "canela"],
-    heartNotes: ["baunilha bourbon", "elemi"],
-    baseNotes: ["madeira guaiac", "ambroxan", "almíscar", "pralinê"],
-    longDescription:
-      "Fragrância sofisticada com baunilha nobre, especiarias elegantes e fundo quente de luxo.",
-    bottleType: "arabe",
-  },
-  {
-    slug: "samarah-rose",
     name: "SAMARAH ROSE",
     inspiration: "Sabah Al Ward",
-    category: "feminino",
     collection: "Oriental Collection",
-    price: 120,
-    shortDescription:
-      "Fragrância feminina elegante, floral e delicada, com toque oriental suave e romântico.",
-    olfactiveFamily: "Floral oriental feminino",
-    topNotes: ["rosa", "pimenta rosa", "notas frutadas"],
-    heartNotes: ["flores brancas", "jasmim", "peônia"],
-    baseNotes: ["almíscar", "baunilha", "âmbar suave"],
-    longDescription:
-      "Fragrância feminina elegante, floral e delicada, com toque oriental suave e romântico.",
-    bottleType: "arabe",
+    family: "Floral oriental",
+    line: "arabic_premium",
+    priceCents: 12000,
+    sizeMl: 50,
+    description: "Rosas delicadas, docura macia e toque oriental radiante.",
+    audience: "Feminino",
+    indicatedFor: ["Encontros", "ocasioes especiais", "presenca feminina"],
+    tags: ["feminino", "floral", "oriental", "elegante"],
+    availabilityStatus: "limited",
   },
   {
-    slug: "florea",
-    name: "FLORÉA",
-    inspiration: "Chloé Eau de Parfum",
-    category: "feminino",
+    name: "FLOREA",
+    inspiration: "Chloe Eau de Parfum",
     collection: "Feminine Collection",
-    price: 80,
-    shortDescription:
-      "Perfume feminino refinado, fresco e elegante, com assinatura floral limpa e sofisticada.",
-    olfactiveFamily: "Floral limpo sofisticado",
-    topNotes: ["peônia", "lichia", "frésia"],
-    heartNotes: ["rosa", "lírio-do-vale", "magnólia"],
-    baseNotes: ["âmbar", "cedro", "almíscar"],
-    longDescription:
-      "Perfume feminino refinado, fresco e elegante, com assinatura floral limpa e sofisticada.",
-    bottleType: "tradicional",
+    family: "Floral elegante",
+    line: "traditional",
+    priceCents: 8000,
+    sizeMl: 50,
+    description: "Feminino, limpo e luminoso, com elegancia atemporal.",
+    audience: "Feminino",
+    indicatedFor: ["Trabalho", "dia a dia", "elegancia leve"],
+    tags: ["floral", "limpo", "elegante", "feminino"],
+    availabilityStatus: "available",
   },
   {
-    slug: "iresia",
-    name: "IRÉSIA",
+    name: "SILVERION BLACK",
+    inspiration: "Azzaro Silver Black",
+    collection: "Executive Collection",
+    family: "Aromatico especiado",
+    line: "traditional",
+    priceCents: 8000,
+    sizeMl: 50,
+    description: "Urbano, fresco e marcante para uma rotina elegante.",
+    audience: "Masculino",
+    indicatedFor: ["Rotina urbana", "trabalho", "saida casual"],
+    tags: ["fresco", "moderno", "masculino", "versatil"],
+    availabilityStatus: "available",
+  },
+  {
+    name: "IRESIA",
     inspiration: "Irresistible Givenchy",
-    category: "feminino",
     collection: "Feminine Collection",
-    price: 80,
-    shortDescription:
-      "Fragrância feminina luminosa, delicada e envolvente, com toque frutado moderno e floral elegante.",
-    olfactiveFamily: "Floral frutado feminino",
-    topNotes: ["pera", "ambrette"],
-    heartNotes: ["rosa", "íris"],
-    baseNotes: ["almíscar", "cedro"],
-    longDescription:
-      "Fragrância feminina luminosa, delicada e envolvente, com toque frutado moderno e floral elegante.",
-    bottleType: "tradicional",
+    family: "Floral frutado",
+    line: "traditional",
+    priceCents: 8000,
+    sizeMl: 50,
+    description: "Leve, envolvente e sofisticado, com brilho feminino moderno.",
+    audience: "Feminino",
+    indicatedFor: ["Dia a dia", "encontros", "presente feminino"],
+    tags: ["floral", "frutado", "delicado", "feminino"],
+    availabilityStatus: "available",
   },
   {
-    slug: "belle-venom",
     name: "BELLE VENOM",
     inspiration: "Good Girl",
-    category: "feminino",
     collection: "Feminine Collection",
-    price: 80,
-    shortDescription:
-      "Perfume feminino sensual, marcante e sofisticado, com contraste entre doçura, flores brancas e fundo quente.",
-    olfactiveFamily: "Oriental floral gourmand",
-    topNotes: ["amêndoa", "café"],
-    heartNotes: ["tuberosa", "jasmim sambac"],
-    baseNotes: ["fava tonka", "cacau", "baunilha", "sândalo"],
-    longDescription:
-      "Perfume feminino sensual, marcante e sofisticado, com contraste entre doçura, flores brancas e fundo quente.",
-    bottleType: "tradicional",
+    family: "Oriental floral",
+    line: "traditional",
+    priceCents: 8000,
+    sizeMl: 50,
+    description: "Sedutor e elegante, com contraste entre docura e intensidade.",
+    audience: "Feminino",
+    indicatedFor: ["Noite", "eventos", "presenca sedutora"],
+    tags: ["sensual", "feminino", "noite", "marcante"],
+    availabilityStatus: "available",
   },
   {
-    slug: "lumiara",
+    name: "NOIR OUD ROYALE",
+    inspiration: "Club de Nuit Oud Armaf",
+    collection: "Oriental Collection",
+    family: "Oud amadeirado",
+    line: "arabic_premium",
+    priceCents: 12000,
+    sizeMl: 50,
+    description: "Nobre, profundo e luxuoso, com rastro oriental de oud.",
+    audience: "Unissex",
+    indicatedFor: ["Noite", "eventos especiais", "rastro luxuoso"],
+    tags: ["oud", "arabe", "luxo", "intenso"],
+    availabilityStatus: "limited",
+  },
+  {
+    name: "YASIRAH",
+    inspiration: "Yara Lattafa",
+    collection: "Oriental Collection",
+    family: "Gourmand oriental",
+    line: "arabic_premium",
+    priceCents: 12000,
+    sizeMl: 50,
+    description: "Cremoso, doce e feminino, com delicadeza oriental.",
+    audience: "Feminino",
+    indicatedFor: ["Uso casual", "encontros", "presente feminino"],
+    tags: ["arabe", "doce", "cremoso", "feminino"],
+    availabilityStatus: "limited",
+  },
+  {
+    name: "ALTAIR ROYALE",
+    inspiration: "Althair Parfums de Marly",
+    collection: "Oriental Collection",
+    family: "Baunilha ambarada",
+    line: "arabic_premium",
+    priceCents: 12000,
+    sizeMl: 50,
+    description: "Ambarado, cremoso e sofisticado, com calor envolvente.",
+    audience: "Unissex",
+    indicatedFor: ["Clima frio", "noite", "sofisticacao cremosa"],
+    tags: ["baunilha", "arabe", "sofisticado", "quente"],
+    availabilityStatus: "limited",
+  },
+  {
+    name: "SCARLET NOIR",
+    inspiration: "Scandal Pour Homme",
+    collection: "Executive Collection",
+    family: "Ambarado amadeirado",
+    line: "traditional",
+    priceCents: 8000,
+    sizeMl: 50,
+    description: "Marcante e provocante, com elegancia intensa.",
+    audience: "Masculino",
+    indicatedFor: ["Encontros", "eventos", "presenca provocante"],
+    tags: ["doce", "noturno", "sedutor", "masculino"],
+    availabilityStatus: "limited",
+  },
+  {
     name: "LUMIARA",
-    inspiration: "La Nuit Trésor",
-    category: "feminino",
+    inspiration: "La Nuit Tresor",
     collection: "Feminine Collection",
-    price: 80,
-    shortDescription:
-      "Fragrância feminina romântica, intensa e sedutora, com doçura sofisticada e presença noturna.",
-    olfactiveFamily: "Oriental baunilha frutado",
-    topNotes: ["pera", "bergamota", "tangerina"],
-    heartNotes: ["rosa negra", "orquídea baunilha", "maracujá"],
-    baseNotes: ["pralinê", "caramelo", "baunilha", "patchouli"],
-    longDescription:
-      "Fragrância feminina romântica, intensa e sedutora, com doçura sofisticada e presença noturna.",
-    bottleType: "tradicional",
+    family: "Oriental gourmand",
+    line: "traditional",
+    priceCents: 8000,
+    sizeMl: 50,
+    description: "Romantico, profundo e envolvente, com rastro memoravel.",
+    audience: "Feminino",
+    indicatedFor: ["Noite", "romance", "ocasioes especiais"],
+    tags: ["romantico", "doce", "feminino", "noite"],
+    availabilityStatus: "limited",
   },
   {
-    slug: "moon-candy",
     name: "MOON CANDY",
     inspiration: "Fantasy",
-    category: "feminino",
     collection: "Feminine Collection",
-    price: 80,
-    shortDescription:
-      "Perfume doce, jovem e divertido, com assinatura gourmand cremosa e toque romântico.",
-    olfactiveFamily: "Gourmand doce frutado",
-    topNotes: ["kiwi", "lichia", "marmelo"],
-    heartNotes: ["chocolate branco", "cupcake", "orquídea", "jasmim"],
-    baseNotes: ["almíscar", "raiz de lírio", "madeiras"],
-    longDescription:
-      "Perfume doce, jovem e divertido, com assinatura gourmand cremosa e toque romântico.",
-    bottleType: "tradicional",
+    family: "Gourmand floral",
+    line: "traditional",
+    priceCents: 8000,
+    sizeMl: 50,
+    description: "Doce, encantador e jovial, com rastro cremoso.",
+    audience: "Feminino",
+    indicatedFor: ["Uso casual", "encontros", "presente feminino"],
+    tags: ["doce", "gourmand", "jovem", "presente"],
+    availabilityStatus: "available",
   },
 ];
+
+export const perfumeCommerce: PerfumeCommerce[] = perfumeData.map(
+  (perfume) => ({
+    ...perfume,
+    whatsappMessage: `Ola! Tenho interesse no perfume ${perfume.name} da Amaro dos Reis Parfum. Pode me passar mais informacoes?`,
+  })
+);
+
+export const perfumes: Perfume[] = perfumeCommerce.map((perfume) => ({
+  ...perfume,
+  slug: perfumeSlug(perfume),
+  olfactiveFamily: perfume.family,
+  price: perfume.priceCents / 100,
+}));
+
+export const availabilityLabels: Record<AvailabilityStatus, string> = {
+  available: "Disponivel",
+  limited: "Poucas unidades",
+  on_order: "Sob encomenda",
+};
+
+export const lineLabels: Record<PerfumeLine, string> = {
+  traditional: "Tradicional R$ 80",
+  arabic_premium: "Arabe Premium R$ 120",
+};
+
+export function formatPerfumePrice(perfume: Pick<PerfumeCommerce, "priceCents">) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(perfume.priceCents / 100);
+}
+
+export function perfumeSlug(perfume: Pick<PerfumeCommerce, "name">) {
+  return perfume.name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+export function getPerfumeCommerce(name?: string | null) {
+  return perfumeCommerce.find((perfume) => perfume.name === name);
+}
+
+export function getPerfumeBySlug(slug: string) {
+  return perfumeCommerce.find((perfume) => perfumeSlug(perfume) === slug);
+}
+
+export function createPerfumeMessage(name?: string | null) {
+  return (
+    getPerfumeCommerce(name)?.whatsappMessage ??
+    "Ola! Tenho interesse nos perfumes da Amaro dos Reis Parfum. Pode me passar mais informacoes?"
+  );
+}
+
+export function getPerfumeIndications(name?: string | null) {
+  return (
+    getPerfumeCommerce(name)?.indicatedFor ?? [
+      "Dia a dia",
+      "encontros",
+      "presenca elegante",
+    ]
+  );
+}

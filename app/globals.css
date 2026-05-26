@@ -3,11 +3,17 @@
 :root {
   --background: #050505;
   --foreground: #f5f1e8;
+  --gold: #d8b76a;
+  --gold-light: #f2d78b;
+  --gold-soft: rgba(216, 183, 106, 0.5);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-gold: var(--gold);
+  --color-gold-light: var(--gold-light);
+  --color-gold-soft: var(--gold-soft);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -24,4 +30,20 @@ html {
 ::selection {
   background: #d8b76a;
   color: #050505;
+}
+
+.premium-bg {
+  background:
+    radial-gradient(circle at 18% 12%, rgba(216, 183, 106, 0.18), transparent 30%),
+    radial-gradient(circle at 85% 5%, rgba(242, 215, 139, 0.1), transparent 24%),
+    linear-gradient(135deg, #050505 0%, #100e0a 48%, #050505 100%);
+}
+
+.gold-glow {
+  box-shadow: 0 0 55px rgba(216, 183, 106, 0.16);
+}
+
+.premium-surface {
+  border: 1px solid rgba(216, 183, 106, 0.2);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.065), rgba(255, 255, 255, 0.025));
 }
