@@ -13,13 +13,23 @@ import {
   perfumeSlug,
   type PerfumeLine,
 } from "@/lib/perfumes";
-import { SALES_STORAGE_KEY, STOCK_STORAGE_KEY } from "@/lib/storage-keys";
+import {
+  CUSTOMERS_STORAGE_KEY,
+  SALES_STORAGE_KEY,
+  STOCK_STORAGE_KEY,
+} from "@/lib/storage-keys";
 
 type StoredPaymentMethod = "dinheiro" | "pix" | "cartao" | "cartão" | "fiado";
 type PaymentMethod = "dinheiro" | "pix" | "cartão" | "fiado";
 type SaleStatus = "pago" | "pendente";
 type SaleFilter = "todos" | "pagos" | "pendentes";
 type PaymentFilter = "todos" | PaymentMethod;
+type CustomerFilter =
+  | "todos"
+  | "com_pendencia"
+  | "sem_pendencia"
+  | "com_telefone"
+  | "sem_telefone";
 type StockFilter =
   | "todos"
   | "em_estoque"
@@ -50,7 +60,23 @@ type StockItem = {
   updatedAt: string;
 };
 
+type Customer = {
+  id: string;
+  name: string;
+  phone?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+};
+
+type CustomerForm = {
+  name: string;
+  phone: string;
+  notes: string;
+};
+
 type SaleForm = {
+  customerId: string;
   customerName: string;
   perfumeSlug: string;
   lineType: PerfumeLine;
@@ -63,12 +89,19 @@ type SaleForm = {
 const defaultPerfume = perfumeCommerce[0];
 
 const initialForm: SaleForm = {
+  customerId: "",
   customerName: "",
   perfumeSlug: perfumeSlug(defaultPerfume),
   lineType: defaultPerfume.line,
   quantity: 1,
   paymentMethod: "pix",
   status: "pago",
+  notes: "",
+};
+
+const initialCustomerForm: CustomerForm = {
+  name: "",
+  phone: "",
   notes: "",
 };
 
@@ -146,6 +179,10 @@ function escapeCsv(value: string | number) {
   return `"${text}"`;
 }
 
+function normalizeName(value: string) {
+  return value.trim().toLowerCase();
+}
+
 function defaultStockItem(slug: string): StockItem {
   return {
     perfumeSlug: slug,
@@ -170,6 +207,13 @@ function stockStatus(item: StockItem) {
 export default function AdminPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [form, setForm] = useState<SaleForm>(initialForm);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customerForm, setCustomerForm] =
+    useState<CustomerForm>(initialCustomerForm);
+  const [customerMessage, setCustomerMessage] = useState("");
+  const [customerFilter, setCustomerFilter] = useState<CustomerFilter>("todos");
+  const [customerQuery, setCustomerQuery] = useState("");
+  const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<SaleFilter>("todos");
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("todos");
   const [stock, setStock] = useState<Record<string, StockItem>>({});
@@ -177,6 +221,7 @@ export default function AdminPage() {
   const [stockWarning, setStockWarning] = useState("");
   const [isStorageLoaded, setIsStorageLoaded] = useState(false);
   const [isStockLoaded, setIsStockLoaded] = useState(false);
+  const [isCustomersLoaded, setIsCustomersLoaded] = useState(false);
   const unitPrice = getLinePrice(form.lineType);
 
   useEffect(() => {
@@ -226,6 +271,33 @@ export default function AdminPage() {
       window.localStorage.setItem(STOCK_STORAGE_KEY, JSON.stringify(stock));
     }
   }, [isStockLoaded, stock]);
+
+  useEffect(() => {
+    const storedCustomers = window.localStorage.getItem(CUSTOMERS_STORAGE_KEY);
+
+    if (!storedCustomers) {
+      setIsCustomersLoaded(true);
+      return;
+    }
+
+    try {
+      const parsedCustomers = JSON.parse(storedCustomers) as Customer[];
+      setCustomers(Array.isArray(parsedCustomers) ? parsedCustomers : []);
+    } catch {
+      setCustomers([]);
+    } finally {
+      setIsCustomersLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isCustomersLoaded) {
+      window.localStorage.setItem(
+        CUSTOMERS_STORAGE_KEY,
+        JSON.stringify(customers)
+      );
+    }
+  }, [customers, isCustomersLoaded]);
 
   const filteredSales = useMemo(() => {
     return sales.filter((sale) => {
@@ -339,6 +411,119 @@ export default function AdminPage() {
     );
   }, [stockRows]);
 
+  const customerSummaries = useMemo(() => {
+    const customerMap = new Map<
+      string,
+      {
+        key: string;
+        name: string;
+        phone: string;
+        notes: string;
+        totalBought: number;
+        totalReceived: number;
+        totalPending: number;
+        purchaseCount: number;
+        lastPurchase: string;
+        sales: Sale[];
+      }
+    >();
+
+    customers.forEach((customer) => {
+      const key = normalizeName(customer.name);
+      customerMap.set(key, {
+        key,
+        name: customer.name,
+        phone: customer.phone ?? "",
+        notes: customer.notes ?? "",
+        totalBought: 0,
+        totalReceived: 0,
+        totalPending: 0,
+        purchaseCount: 0,
+        lastPurchase: "",
+        sales: [],
+      });
+    });
+
+    sales.forEach((sale) => {
+      const key = normalizeName(sale.customerName);
+      const current =
+        customerMap.get(key) ??
+        {
+          key,
+          name: sale.customerName,
+          phone: "",
+          notes: "",
+          totalBought: 0,
+          totalReceived: 0,
+          totalPending: 0,
+          purchaseCount: 0,
+          lastPurchase: "",
+          sales: [],
+        };
+      const profit = saleProfit(sale);
+
+      current.totalBought += profit.revenue;
+      current.purchaseCount += 1;
+      current.sales.push(sale);
+
+      if (sale.status === "pago") {
+        current.totalReceived += profit.revenue;
+      } else {
+        current.totalPending += profit.revenue;
+      }
+
+      if (!current.lastPurchase || sale.createdAt > current.lastPurchase) {
+        current.lastPurchase = sale.createdAt;
+      }
+
+      customerMap.set(key, current);
+    });
+
+    return Array.from(customerMap.values()).sort((a, b) =>
+      a.name.localeCompare(b.name)
+    );
+  }, [customers, sales]);
+
+  const filteredCustomerSummaries = useMemo(() => {
+    const query = normalizeName(customerQuery);
+
+    return customerSummaries.filter((customer) => {
+      const matchesQuery = !query || normalizeName(customer.name).includes(query);
+      const matchesFilter =
+        customerFilter === "todos" ||
+        (customerFilter === "com_pendencia" && customer.totalPending > 0) ||
+        (customerFilter === "sem_pendencia" && customer.totalPending <= 0) ||
+        (customerFilter === "com_telefone" && Boolean(customer.phone)) ||
+        (customerFilter === "sem_telefone" && !customer.phone);
+
+      return matchesQuery && matchesFilter;
+    });
+  }, [customerFilter, customerQuery, customerSummaries]);
+
+  const customerStats = useMemo(() => {
+    return customerSummaries.reduce(
+      (acc, customer) => {
+        acc.totalPending += customer.totalPending;
+
+        if (customer.totalPending > 0) {
+          acc.withPending += 1;
+        }
+
+        if (customer.totalPending > acc.biggestPending) {
+          acc.biggestPending = customer.totalPending;
+        }
+
+        return acc;
+      },
+      {
+        registered: customers.length,
+        withPending: 0,
+        totalPending: 0,
+        biggestPending: 0,
+      }
+    );
+  }, [customerSummaries, customers.length]);
+
   const preview = useMemo(
     () =>
       calculateSaleProfit(
@@ -377,6 +562,49 @@ export default function AdminPage() {
       perfumeSlug: nextSlug,
       lineType: perfume?.line ?? current.lineType,
     }));
+  }
+
+  function handleCustomerSelect(customerId: string) {
+    const customer = customers.find((item) => item.id === customerId);
+
+    setForm((current) => ({
+      ...current,
+      customerId,
+      customerName: customer?.name ?? current.customerName,
+    }));
+  }
+
+  function handleCustomerSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const name = customerForm.name.trim();
+
+    if (!name) {
+      return;
+    }
+
+    const alreadyExists = customers.some(
+      (customer) => normalizeName(customer.name) === normalizeName(name)
+    );
+
+    if (alreadyExists) {
+      setCustomerMessage("Cliente ja cadastrado com esse nome.");
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const customer: Customer = {
+      id: createId(),
+      name,
+      phone: customerForm.phone.trim() || undefined,
+      notes: customerForm.notes.trim() || undefined,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    setCustomers((current) => [...current, customer]);
+    setCustomerForm(initialCustomerForm);
+    setCustomerMessage("Cliente salvo localmente.");
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -438,6 +666,45 @@ export default function AdminPage() {
           : sale
       )
     );
+  }
+
+  function markCustomerPendingAsPaid(customerName: string) {
+    const confirmed = window.confirm(
+      "Marcar todas as pendencias deste cliente como pagas?"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    const key = normalizeName(customerName);
+
+    setSales((current) =>
+      current.map((sale) =>
+        normalizeName(sale.customerName) === key && sale.status === "pendente"
+          ? { ...sale, status: "pago", paidAt: new Date().toISOString() }
+          : sale
+      )
+    );
+  }
+
+  async function copyChargeMessage(customer: {
+    name: string;
+    totalPending: number;
+  }) {
+    const message =
+      customer.totalPending > 0
+        ? `Ola, ${customer.name}! Tudo bem? Passando para lembrar com carinho da pendencia referente aos perfumes da Amaro dos Reis Parfum. O valor em aberto e de ${formatCurrency(
+            customer.totalPending
+          )}. Quando puder, me avise a melhor forma de acertarmos. Muito obrigado!`
+        : `Ola, ${customer.name}! Obrigado pela confianca na Amaro dos Reis Parfum. Sempre que quiser conhecer novas fragrancias, estou a disposicao!`;
+
+    try {
+      await navigator.clipboard.writeText(message);
+      setCustomerMessage("Mensagem copiada.");
+    } catch {
+      window.alert(message);
+    }
   }
 
   function deleteSale(id: string) {
@@ -602,6 +869,40 @@ export default function AdminPage() {
     URL.revokeObjectURL(url);
   }
 
+  function exportCustomersCsv() {
+    const header = [
+      "nome",
+      "telefone",
+      "total_comprado",
+      "total_recebido",
+      "total_pendente",
+      "quantidade_compras",
+      "ultima_compra",
+      "observacao",
+    ];
+    const rows = customerSummaries.map((customer) => [
+      customer.name,
+      customer.phone,
+      customer.totalBought.toFixed(2),
+      customer.totalReceived.toFixed(2),
+      customer.totalPending.toFixed(2),
+      customer.purchaseCount,
+      customer.lastPurchase ? formatDate(customer.lastPurchase) : "",
+      customer.notes,
+    ]);
+    const csv = [header, ...rows]
+      .map((row) => row.map(escapeCsv).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = "amaro-clientes.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   const summaryCards = [
     ["Faturamento total", formatCurrency(summary.revenue)],
     ["Total recebido", formatCurrency(summary.totalReceived)],
@@ -615,6 +916,10 @@ export default function AdminPage() {
     ["Unidades em estoque", stockSummary.totalUnits],
     ["Itens com poucas unidades", stockSummary.lowItems],
     ["Itens sem estoque", stockSummary.emptyItems],
+    ["Clientes cadastrados", customerStats.registered],
+    ["Clientes com pendencia", customerStats.withPending],
+    ["Pendente por clientes", formatCurrency(customerStats.totalPending)],
+    ["Maior pendencia individual", formatCurrency(customerStats.biggestPending)],
   ];
 
   return (
@@ -728,6 +1033,25 @@ export default function AdminPage() {
               </div>
 
               <div className="mt-6 grid gap-4">
+                <label>
+                  <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                    Cliente cadastrado
+                  </span>
+                  <select
+                    value={form.customerId}
+                    onChange={(event) => handleCustomerSelect(event.target.value)}
+                    className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
+                  >
+                    <option value="">Venda para cliente nao cadastrado</option>
+                    {customers.map((customer) => (
+                      <option key={customer.id} value={customer.id}>
+                        {customer.name}
+                        {customer.phone ? ` - ${customer.phone}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
                 <label>
                   <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
                     Nome do cliente
@@ -1071,6 +1395,307 @@ export default function AdminPage() {
               </div>
             </section>
           </div>
+
+          <section className="mt-8 premium-surface p-6">
+            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gold">
+                  Clientes e pendencias
+                </p>
+                <h2 className="mt-3 text-2xl font-semibold text-white">
+                  Controle de fiados e recebimentos
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={exportCustomersCsv}
+                className="min-h-10 w-fit rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold"
+              >
+                Exportar clientes CSV
+              </button>
+            </div>
+
+            <div className="mt-6 grid gap-6 xl:grid-cols-[0.74fr_1.26fr]">
+              <form
+                onSubmit={handleCustomerSubmit}
+                className="border border-white/10 bg-black/25 p-5"
+              >
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
+                  Cadastro rapido de cliente
+                </p>
+                <div className="mt-5 grid gap-4">
+                  <label>
+                    <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                      Nome do cliente
+                    </span>
+                    <input
+                      value={customerForm.name}
+                      onChange={(event) =>
+                        setCustomerForm((current) => ({
+                          ...current,
+                          name: event.target.value,
+                        }))
+                      }
+                      className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
+                    />
+                  </label>
+                  <label>
+                    <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                      Telefone/WhatsApp opcional
+                    </span>
+                    <input
+                      value={customerForm.phone}
+                      onChange={(event) =>
+                        setCustomerForm((current) => ({
+                          ...current,
+                          phone: event.target.value,
+                        }))
+                      }
+                      className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
+                    />
+                  </label>
+                  <label>
+                    <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                      Observacao opcional
+                    </span>
+                    <textarea
+                      rows={3}
+                      value={customerForm.notes}
+                      onChange={(event) =>
+                        setCustomerForm((current) => ({
+                          ...current,
+                          notes: event.target.value,
+                        }))
+                      }
+                      className="mt-2 w-full resize-none border border-gold/25 bg-black/45 px-4 py-3 text-sm text-white outline-none transition focus:border-gold"
+                    />
+                  </label>
+                  {customerMessage ? (
+                    <p className="text-sm text-gold-light">{customerMessage}</p>
+                  ) : null}
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="submit"
+                      className="min-h-10 rounded-full bg-gold px-4 text-xs font-semibold uppercase tracking-[0.16em] text-black transition hover:bg-gold-light"
+                    >
+                      Salvar cliente
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomerForm(initialCustomerForm);
+                        setCustomerMessage("");
+                      }}
+                      className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold"
+                    >
+                      Limpar formulario
+                    </button>
+                  </div>
+                </div>
+              </form>
+
+              <div>
+                <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
+                  <label>
+                    <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                      Buscar cliente
+                    </span>
+                    <input
+                      value={customerQuery}
+                      onChange={(event) => setCustomerQuery(event.target.value)}
+                      className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
+                    />
+                  </label>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                      Filtros
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {[
+                        ["todos", "Todos"],
+                        ["com_pendencia", "Com pendencia"],
+                        ["sem_pendencia", "Sem pendencia"],
+                        ["com_telefone", "Com telefone"],
+                        ["sem_telefone", "Sem telefone"],
+                      ].map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() =>
+                            setCustomerFilter(value as CustomerFilter)
+                          }
+                          className={`min-h-10 rounded-full border px-4 text-xs font-semibold uppercase tracking-[0.14em] transition ${
+                            customerFilter === value
+                              ? "border-gold bg-gold text-black"
+                              : "border-gold/30 bg-gold/10 text-gold-light hover:border-gold-light"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-5 grid gap-3">
+                  {filteredCustomerSummaries.length === 0 ? (
+                    <div className="border border-white/10 bg-black/25 p-6 text-center">
+                      <p className="text-sm text-stone-500">
+                        Nenhum cliente encontrado neste filtro.
+                      </p>
+                    </div>
+                  ) : (
+                    filteredCustomerSummaries.map((customer) => {
+                      const hasPending = customer.totalPending > 0;
+                      const isExpanded = expandedCustomer === customer.key;
+
+                      return (
+                        <article
+                          key={customer.key}
+                          className="border border-white/10 bg-black/25 p-5"
+                        >
+                          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-3">
+                                <h3 className="text-xl font-semibold text-white">
+                                  {customer.name}
+                                </h3>
+                                <span
+                                  className={`border px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
+                                    hasPending
+                                      ? "border-gold/35 bg-gold/10 text-gold-light"
+                                      : "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
+                                  }`}
+                                >
+                                  {hasPending ? "Deve pagar" : "Sem pendencias"}
+                                </span>
+                              </div>
+                              {customer.phone ? (
+                                <p className="mt-2 text-sm text-stone-500">
+                                  {customer.phone}
+                                </p>
+                              ) : null}
+                              <div className="mt-4 grid gap-2 text-sm text-stone-300 sm:grid-cols-2 lg:grid-cols-3">
+                                <p>
+                                  Total comprado:{" "}
+                                  {formatCurrency(customer.totalBought)}
+                                </p>
+                                <p>
+                                  Recebido:{" "}
+                                  {formatCurrency(customer.totalReceived)}
+                                </p>
+                                <p>
+                                  Pendente:{" "}
+                                  {formatCurrency(customer.totalPending)}
+                                </p>
+                                <p>Compras: {customer.purchaseCount}</p>
+                                <p>
+                                  Ultima compra:{" "}
+                                  {customer.lastPurchase
+                                    ? formatDate(customer.lastPurchase)
+                                    : "Sem compras"}
+                                </p>
+                              </div>
+                              {customer.notes ? (
+                                <p className="mt-3 text-sm leading-6 text-stone-500">
+                                  {customer.notes}
+                                </p>
+                              ) : null}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedCustomer(
+                                    isExpanded ? null : customer.key
+                                  )
+                                }
+                                className="min-h-10 rounded-full border border-white/15 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-stone-300 transition hover:border-gold/50 hover:text-gold-light"
+                              >
+                                {isExpanded ? "Fechar historico" : "Ver historico"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  markCustomerPendingAsPaid(customer.name)
+                                }
+                                className="min-h-10 rounded-full border border-emerald-400/30 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-300 transition hover:bg-emerald-400/10"
+                              >
+                                Marcar pendencias como pagas
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => copyChargeMessage(customer)}
+                                className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold"
+                              >
+                                Copiar mensagem de cobranca
+                              </button>
+                            </div>
+                          </div>
+
+                          {isExpanded ? (
+                            <div className="mt-5 grid gap-2 border-t border-white/10 pt-5">
+                              {customer.sales.length === 0 ? (
+                                <p className="text-sm text-stone-500">
+                                  Cliente ainda sem compras registradas.
+                                </p>
+                              ) : (
+                                customer.sales.map((sale) => {
+                                  const profit = saleProfit(sale);
+                                  const paymentMethod = normalizePaymentMethod(
+                                    sale.paymentMethod
+                                  );
+
+                                  return (
+                                    <div
+                                      key={sale.id}
+                                      className="border border-white/10 bg-black/25 p-4 text-sm text-stone-300"
+                                    >
+                                      <p className="font-semibold text-white">
+                                        {sale.perfumeName}
+                                      </p>
+                                      <p className="mt-2 text-stone-500">
+                                        {formatDate(sale.createdAt)} &bull;{" "}
+                                        {sale.quantity} un. &bull;{" "}
+                                        {formatCurrency(profit.revenue)} &bull;{" "}
+                                        {statusLabels[sale.status]} &bull;{" "}
+                                        {paymentLabels[paymentMethod]}
+                                      </p>
+                                      {sale.notes ? (
+                                        <p className="mt-2 leading-6">
+                                          {sale.notes}
+                                        </p>
+                                      ) : null}
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                          ) : null}
+                        </article>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="mt-8 premium-surface p-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gold">
+              Como controlar fiados
+            </p>
+            <div className="mt-5 grid gap-3 text-sm leading-7 text-stone-400 sm:grid-cols-2">
+              <p>Cadastre clientes frequentes.</p>
+              <p>Registre toda venda no momento da entrega.</p>
+              <p>
+                Use status pendente quando a pessoa for pagar depois.
+              </p>
+              <p>Quando receber, marque as pendencias como pagas.</p>
+              <p>Exporte CSV regularmente para backup.</p>
+              <p>Este controle e local e fica salvo apenas neste navegador.</p>
+            </div>
+          </section>
 
           <section className="mt-8 premium-surface p-6">
             <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
