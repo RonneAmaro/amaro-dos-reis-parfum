@@ -14,6 +14,7 @@ import {
   type PerfumeLine,
 } from "@/lib/perfumes";
 import {
+  BACKUP_INFO_STORAGE_KEY,
   CUSTOMERS_STORAGE_KEY,
   SALES_STORAGE_KEY,
   STOCK_STORAGE_KEY,
@@ -73,6 +74,26 @@ type CustomerForm = {
   name: string;
   phone: string;
   notes: string;
+};
+
+type BackupInfo = {
+  lastBackupAt: string;
+};
+
+type FullBackup = {
+  app: "Amaro dos Reis Parfum";
+  version: 1;
+  createdAt: string;
+  storageKeys: {
+    sales: typeof SALES_STORAGE_KEY;
+    stock: typeof STOCK_STORAGE_KEY;
+    customers: typeof CUSTOMERS_STORAGE_KEY;
+  };
+  data: {
+    sales: Sale[];
+    stock: Record<string, StockItem>;
+    customers: Customer[];
+  };
 };
 
 type SaleForm = {
@@ -179,6 +200,19 @@ function escapeCsv(value: string | number) {
   return `"${text}"`;
 }
 
+function downloadJson(filename: string, data: unknown) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: "application/json;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 function normalizeName(value: string) {
   return value.trim().toLowerCase();
 }
@@ -214,6 +248,8 @@ export default function AdminPage() {
   const [customerFilter, setCustomerFilter] = useState<CustomerFilter>("todos");
   const [customerQuery, setCustomerQuery] = useState("");
   const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
+  const [backupInfo, setBackupInfo] = useState<BackupInfo | null>(null);
+  const [backupMessage, setBackupMessage] = useState("");
   const [statusFilter, setStatusFilter] = useState<SaleFilter>("todos");
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("todos");
   const [stock, setStock] = useState<Record<string, StockItem>>({});
@@ -298,6 +334,24 @@ export default function AdminPage() {
       );
     }
   }, [customers, isCustomersLoaded]);
+
+  useEffect(() => {
+    const storedInfo = window.localStorage.getItem(BACKUP_INFO_STORAGE_KEY);
+
+    if (!storedInfo) {
+      return;
+    }
+
+    try {
+      const parsedInfo = JSON.parse(storedInfo) as BackupInfo;
+
+      if (parsedInfo?.lastBackupAt) {
+        setBackupInfo(parsedInfo);
+      }
+    } catch {
+      setBackupInfo(null);
+    }
+  }, []);
 
   const filteredSales = useMemo(() => {
     return sales.filter((sale) => {
@@ -901,6 +955,120 @@ export default function AdminPage() {
     link.download = "amaro-clientes.csv";
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  function createFullBackup(): FullBackup {
+    return {
+      app: "Amaro dos Reis Parfum",
+      version: 1,
+      createdAt: new Date().toISOString(),
+      storageKeys: {
+        sales: SALES_STORAGE_KEY,
+        stock: STOCK_STORAGE_KEY,
+        customers: CUSTOMERS_STORAGE_KEY,
+      },
+      data: {
+        sales,
+        stock,
+        customers,
+      },
+    };
+  }
+
+  function exportFullBackup() {
+    const backup = createFullBackup();
+    const date = backup.createdAt.slice(0, 10);
+    const nextBackupInfo = { lastBackupAt: backup.createdAt };
+
+    downloadJson(`amaro-dos-reis-backup-${date}.json`, backup);
+    window.localStorage.setItem(
+      BACKUP_INFO_STORAGE_KEY,
+      JSON.stringify(nextBackupInfo)
+    );
+    setBackupInfo(nextBackupInfo);
+    setBackupMessage("Backup completo baixado com sucesso.");
+  }
+
+  function exportPartialBackup(kind: "sales" | "stock" | "customers") {
+    const backup = {
+      app: "Amaro dos Reis Parfum",
+      version: 1,
+      createdAt: new Date().toISOString(),
+      storageKey:
+        kind === "sales"
+          ? SALES_STORAGE_KEY
+          : kind === "stock"
+            ? STOCK_STORAGE_KEY
+            : CUSTOMERS_STORAGE_KEY,
+      data: kind === "sales" ? sales : kind === "stock" ? stock : customers,
+    };
+
+    downloadJson(`amaro-${kind}-backup-${backup.createdAt.slice(0, 10)}.json`, backup);
+    setBackupMessage("Backup parcial baixado com sucesso.");
+  }
+
+  function isValidFullBackup(value: unknown): value is FullBackup {
+    if (!value || typeof value !== "object") {
+      return false;
+    }
+
+    const backup = value as FullBackup;
+
+    return (
+      backup.app === "Amaro dos Reis Parfum" &&
+      backup.version === 1 &&
+      Boolean(backup.data) &&
+      Array.isArray(backup.data.sales) &&
+      Boolean(backup.data.stock) &&
+      typeof backup.data.stock === "object" &&
+      Array.isArray(backup.data.customers)
+    );
+  }
+
+  function restoreBackupFile(file: File) {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      try {
+        const parsedBackup = JSON.parse(String(reader.result));
+
+        if (!isValidFullBackup(parsedBackup)) {
+          throw new Error("Invalid backup");
+        }
+
+        const confirmed = window.confirm(
+          "Esta acao vai substituir vendas, estoque e clientes salvos neste navegador. Deseja continuar?"
+        );
+
+        if (!confirmed) {
+          return;
+        }
+
+        window.localStorage.setItem(
+          SALES_STORAGE_KEY,
+          JSON.stringify(parsedBackup.data.sales)
+        );
+        window.localStorage.setItem(
+          STOCK_STORAGE_KEY,
+          JSON.stringify(parsedBackup.data.stock)
+        );
+        window.localStorage.setItem(
+          CUSTOMERS_STORAGE_KEY,
+          JSON.stringify(parsedBackup.data.customers)
+        );
+
+        setSales(parsedBackup.data.sales);
+        setStock(parsedBackup.data.stock);
+        setCustomers(parsedBackup.data.customers);
+        setBackupMessage("Backup restaurado com sucesso.");
+      } catch {
+        setBackupMessage(
+          "Nao foi possivel restaurar este arquivo. Verifique se e um backup valido da Amaro dos Reis Parfum."
+        );
+      }
+    };
+
+    reader.readAsText(file);
   }
 
   const summaryCards = [
@@ -1827,6 +1995,130 @@ export default function AdminPage() {
               </p>
               <p>Se vender sob encomenda, o estoque pode ficar zerado.</p>
               <p>Exporte CSV regularmente para backup.</p>
+            </div>
+          </section>
+
+          <section className="mt-8 premium-surface p-6">
+            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gold">
+                  Backup e seguranca dos dados
+                </p>
+                <h2 className="mt-3 text-2xl font-semibold text-white">
+                  Exporte e restaure os dados locais
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={exportFullBackup}
+                className="min-h-10 w-fit rounded-full bg-gold px-5 text-xs font-semibold uppercase tracking-[0.16em] text-black transition hover:bg-gold-light"
+              >
+                Baixar backup completo
+              </button>
+            </div>
+
+            <div className="mt-6 grid gap-4 lg:grid-cols-3">
+              <article className="border border-white/10 bg-black/25 p-5">
+                <p className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                  Ultimo backup
+                </p>
+                <p className="mt-3 text-lg font-semibold text-gold-light">
+                  {backupInfo?.lastBackupAt
+                    ? formatDate(backupInfo.lastBackupAt)
+                    : "Nenhum backup registrado neste navegador."}
+                </p>
+              </article>
+
+              <article className="border border-white/10 bg-black/25 p-5 lg:col-span-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
+                  Importante
+                </p>
+                <div className="mt-4 grid gap-2 text-sm leading-7 text-stone-400 sm:grid-cols-2">
+                  <p>
+                    Os dados deste painel ficam salvos apenas neste navegador.
+                  </p>
+                  <p>
+                    Se limpar dados do navegador, trocar de computador ou
+                    formatar a maquina, voce pode perder as informacoes.
+                  </p>
+                  <p>Baixe um backup completo regularmente.</p>
+                  <p>
+                    Guarde o arquivo em local seguro, como Google Drive,
+                    pendrive ou pasta de documentos.
+                  </p>
+                </div>
+              </article>
+            </div>
+
+            <div className="mt-6 grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
+              <div className="border border-white/10 bg-black/25 p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
+                  Exportacoes parciais
+                </p>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => exportPartialBackup("sales")}
+                    className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold"
+                  >
+                    Exportar apenas vendas
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => exportPartialBackup("stock")}
+                    className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold"
+                  >
+                    Exportar apenas estoque
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => exportPartialBackup("customers")}
+                    className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold"
+                  >
+                    Exportar apenas clientes
+                  </button>
+                </div>
+
+                <label className="mt-6 block">
+                  <span className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
+                    Restaurar backup
+                  </span>
+                  <input
+                    type="file"
+                    accept=".json,application/json"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+
+                      if (file) {
+                        restoreBackupFile(file);
+                        event.target.value = "";
+                      }
+                    }}
+                    className="mt-3 block w-full text-sm text-stone-400 file:mr-4 file:min-h-10 file:rounded-full file:border-0 file:bg-gold file:px-4 file:text-xs file:font-semibold file:uppercase file:tracking-[0.14em] file:text-black"
+                  />
+                </label>
+
+                {backupMessage ? (
+                  <p className="mt-4 text-sm leading-6 text-gold-light">
+                    {backupMessage}
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="border border-white/10 bg-black/25 p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
+                  Quando fazer backup?
+                </p>
+                <div className="mt-4 grid gap-2 text-sm leading-7 text-stone-400 sm:grid-cols-2">
+                  <p>Ao final de cada semana.</p>
+                  <p>Depois de registrar muitas vendas.</p>
+                  <p>Antes de trocar de computador.</p>
+                  <p>Antes de limpar navegador.</p>
+                  <p className="sm:col-span-2">
+                    Antes de grandes alteracoes no sistema.
+                  </p>
+                </div>
+              </div>
             </div>
           </section>
 
