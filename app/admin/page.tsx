@@ -13,14 +13,20 @@ import {
   perfumeSlug,
   type PerfumeLine,
 } from "@/lib/perfumes";
-
-const STORAGE_KEY = "amaro_sales_v1";
+import { SALES_STORAGE_KEY, STOCK_STORAGE_KEY } from "@/lib/storage-keys";
 
 type StoredPaymentMethod = "dinheiro" | "pix" | "cartao" | "cartão" | "fiado";
 type PaymentMethod = "dinheiro" | "pix" | "cartão" | "fiado";
 type SaleStatus = "pago" | "pendente";
 type SaleFilter = "todos" | "pagos" | "pendentes";
 type PaymentFilter = "todos" | PaymentMethod;
+type StockFilter =
+  | "todos"
+  | "em_estoque"
+  | "poucas"
+  | "sem_estoque"
+  | "traditional"
+  | "arabic_premium";
 
 export type Sale = {
   id: string;
@@ -35,6 +41,13 @@ export type Sale = {
   notes: string;
   createdAt: string;
   paidAt?: string;
+};
+
+type StockItem = {
+  perfumeSlug: string;
+  quantity: number;
+  minQuantity: number;
+  updatedAt: string;
 };
 
 type SaleForm = {
@@ -133,16 +146,41 @@ function escapeCsv(value: string | number) {
   return `"${text}"`;
 }
 
+function defaultStockItem(slug: string): StockItem {
+  return {
+    perfumeSlug: slug,
+    quantity: 0,
+    minQuantity: 2,
+    updatedAt: "",
+  };
+}
+
+function stockStatus(item: StockItem) {
+  if (item.quantity <= 0) {
+    return "Sem estoque";
+  }
+
+  if (item.quantity <= item.minQuantity) {
+    return "Poucas unidades";
+  }
+
+  return "Em estoque";
+}
+
 export default function AdminPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [form, setForm] = useState<SaleForm>(initialForm);
   const [statusFilter, setStatusFilter] = useState<SaleFilter>("todos");
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("todos");
+  const [stock, setStock] = useState<Record<string, StockItem>>({});
+  const [stockFilter, setStockFilter] = useState<StockFilter>("todos");
+  const [stockWarning, setStockWarning] = useState("");
   const [isStorageLoaded, setIsStorageLoaded] = useState(false);
+  const [isStockLoaded, setIsStockLoaded] = useState(false);
   const unitPrice = getLinePrice(form.lineType);
 
   useEffect(() => {
-    const storedSales = window.localStorage.getItem(STORAGE_KEY);
+    const storedSales = window.localStorage.getItem(SALES_STORAGE_KEY);
 
     if (!storedSales) {
       setIsStorageLoaded(true);
@@ -161,9 +199,33 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (isStorageLoaded) {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sales));
+      window.localStorage.setItem(SALES_STORAGE_KEY, JSON.stringify(sales));
     }
   }, [isStorageLoaded, sales]);
+
+  useEffect(() => {
+    const storedStock = window.localStorage.getItem(STOCK_STORAGE_KEY);
+
+    if (!storedStock) {
+      setIsStockLoaded(true);
+      return;
+    }
+
+    try {
+      const parsedStock = JSON.parse(storedStock) as Record<string, StockItem>;
+      setStock(parsedStock && typeof parsedStock === "object" ? parsedStock : {});
+    } catch {
+      setStock({});
+    } finally {
+      setIsStockLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isStockLoaded) {
+      window.localStorage.setItem(STOCK_STORAGE_KEY, JSON.stringify(stock));
+    }
+  }, [isStockLoaded, stock]);
 
   const filteredSales = useMemo(() => {
     return sales.filter((sale) => {
@@ -218,6 +280,65 @@ export default function AdminPage() {
     };
   }, [sales]);
 
+  const stockRows = useMemo(() => {
+    return perfumeCommerce.map((perfume) => {
+      const slug = perfumeSlug(perfume);
+      const item = stock[slug] ?? defaultStockItem(slug);
+
+      return {
+        perfume,
+        item,
+        status: stockStatus(item),
+      };
+    });
+  }, [stock]);
+
+  const filteredStockRows = useMemo(() => {
+    return stockRows.filter(({ perfume, item, status }) => {
+      if (stockFilter === "todos") {
+        return true;
+      }
+
+      if (stockFilter === "em_estoque") {
+        return status === "Em estoque";
+      }
+
+      if (stockFilter === "poucas") {
+        return status === "Poucas unidades";
+      }
+
+      if (stockFilter === "sem_estoque") {
+        return status === "Sem estoque";
+      }
+
+      return perfume.line === stockFilter;
+    });
+  }, [stockFilter, stockRows]);
+
+  const stockSummary = useMemo(() => {
+    return stockRows.reduce(
+      (acc, row) => {
+        acc.totalUnits += row.item.quantity;
+
+        if (row.status === "Poucas unidades") {
+          acc.lowItems += 1;
+        }
+
+        if (row.status === "Sem estoque") {
+          acc.emptyItems += 1;
+        }
+
+        return acc;
+      },
+      {
+        differentPerfumes: stockRows.length,
+        totalUnits: 0,
+        lowItems: 0,
+        emptyItems: 0,
+      }
+    );
+  }, [stockRows]);
+
   const preview = useMemo(
     () =>
       calculateSaleProfit(
@@ -231,6 +352,22 @@ export default function AdminPage() {
       ),
     [form.lineType, form.paymentMethod, form.quantity, unitPrice]
   );
+
+  const selectedStock = useMemo(() => {
+    return stock[form.perfumeSlug] ?? defaultStockItem(form.perfumeSlug);
+  }, [form.perfumeSlug, stock]);
+
+  const selectedStockMessage = useMemo(() => {
+    if (selectedStock.quantity <= 0) {
+      return "Sem estoque registrado. Voce ainda pode lancar como encomenda.";
+    }
+
+    if (selectedStock.quantity <= selectedStock.minQuantity) {
+      return "Poucas unidades disponiveis.";
+    }
+
+    return "Disponivel em estoque.";
+  }, [selectedStock]);
 
   function handlePerfumeChange(nextSlug: string) {
     const perfume = perfumeCommerce.find((item) => perfumeSlug(item) === nextSlug);
@@ -269,6 +406,27 @@ export default function AdminPage() {
     };
 
     setSales((current) => [sale, ...current]);
+    setStock((current) => {
+      const item = current[sale.perfumeSlug] ?? defaultStockItem(sale.perfumeSlug);
+      const nextQuantity = Math.max(0, item.quantity - sale.quantity);
+
+      if (sale.quantity > item.quantity) {
+        setStockWarning(
+          "Venda registrada, mas o estoque ficou zerado. Confira se foi encomenda ou estoque manual."
+        );
+      } else {
+        setStockWarning("");
+      }
+
+      return {
+        ...current,
+        [sale.perfumeSlug]: {
+          ...item,
+          quantity: nextQuantity,
+          updatedAt: new Date().toISOString(),
+        },
+      };
+    });
     setForm(initialForm);
   }
 
@@ -283,7 +441,76 @@ export default function AdminPage() {
   }
 
   function deleteSale(id: string) {
-    setSales((current) => current.filter((sale) => sale.id !== id));
+    const sale = sales.find((item) => item.id === id);
+
+    if (!sale) {
+      return;
+    }
+
+    const shouldReturnStock = window.confirm(
+      "Deseja devolver esta quantidade ao estoque?"
+    );
+
+    if (shouldReturnStock) {
+      updateStockQuantity(sale.perfumeSlug, sale.quantity);
+    }
+
+    setSales((current) => current.filter((item) => item.id !== id));
+  }
+
+  function updateStockQuantity(slug: string, delta: number) {
+    setStock((current) => {
+      const item = current[slug] ?? defaultStockItem(slug);
+
+      return {
+        ...current,
+        [slug]: {
+          ...item,
+          quantity: Math.max(0, item.quantity + delta),
+          updatedAt: new Date().toISOString(),
+        },
+      };
+    });
+  }
+
+  function editStockQuantity(slug: string) {
+    const item = stock[slug] ?? defaultStockItem(slug);
+    const nextValue = window.prompt("Informe a quantidade em estoque:", String(item.quantity));
+
+    if (nextValue === null) {
+      return;
+    }
+
+    const quantity = Math.max(0, Number(nextValue) || 0);
+
+    setStock((current) => ({
+      ...current,
+      [slug]: {
+        ...(current[slug] ?? defaultStockItem(slug)),
+        quantity,
+        updatedAt: new Date().toISOString(),
+      },
+    }));
+  }
+
+  function editMinQuantity(slug: string) {
+    const item = stock[slug] ?? defaultStockItem(slug);
+    const nextValue = window.prompt("Informe o estoque minimo:", String(item.minQuantity));
+
+    if (nextValue === null) {
+      return;
+    }
+
+    const minQuantity = Math.max(0, Number(nextValue) || 0);
+
+    setStock((current) => ({
+      ...current,
+      [slug]: {
+        ...(current[slug] ?? defaultStockItem(slug)),
+        minQuantity,
+        updatedAt: new Date().toISOString(),
+      },
+    }));
   }
 
   function exportCsv() {
@@ -339,6 +566,42 @@ export default function AdminPage() {
     URL.revokeObjectURL(url);
   }
 
+  function exportStockCsv() {
+    const header = [
+      "perfume",
+      "colecao",
+      "tipo",
+      "preco",
+      "quantidade",
+      "estoque_minimo",
+      "status",
+      "atualizado_em",
+    ];
+
+    const rows = stockRows.map(({ perfume, item, status }) => [
+      perfume.name,
+      perfume.collection,
+      lineLabels[perfume.line],
+      getLinePrice(perfume.line),
+      item.quantity,
+      item.minQuantity,
+      status,
+      item.updatedAt ? formatDate(item.updatedAt) : "",
+    ]);
+
+    const csv = [header, ...rows]
+      .map((row) => row.map(escapeCsv).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = "amaro-estoque.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   const summaryCards = [
     ["Faturamento total", formatCurrency(summary.revenue)],
     ["Total recebido", formatCurrency(summary.totalReceived)],
@@ -348,6 +611,10 @@ export default function AdminPage() {
     ["Margem media", formatPercent(summary.averageMargin)],
     ["Taxas de cartao estimadas", formatCurrency(summary.cardFees)],
     ["Perfumes vendidos", summary.itemsCount],
+    ["Perfumes diferentes cadastrados", stockSummary.differentPerfumes],
+    ["Unidades em estoque", stockSummary.totalUnits],
+    ["Itens com poucas unidades", stockSummary.lowItems],
+    ["Itens sem estoque", stockSummary.emptyItems],
   ];
 
   return (
@@ -494,6 +761,24 @@ export default function AdminPage() {
                     ))}
                   </select>
                 </label>
+
+                <div className="border border-white/10 bg-black/25 p-4">
+                  <p className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                    Estoque atual
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-gold-light">
+                    {selectedStock.quantity} unidade
+                    {selectedStock.quantity === 1 ? "" : "s"}
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-stone-400">
+                    {selectedStockMessage}
+                  </p>
+                  {stockWarning ? (
+                    <p className="mt-3 text-sm leading-6 text-gold-light">
+                      {stockWarning}
+                    </p>
+                  ) : null}
+                </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label>
@@ -786,6 +1071,139 @@ export default function AdminPage() {
               </div>
             </section>
           </div>
+
+          <section className="mt-8 premium-surface p-6">
+            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gold">
+                  Controle de estoque
+                </p>
+                <h2 className="mt-3 text-2xl font-semibold text-white">
+                  Perfumes, quantidades e alertas
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={exportStockCsv}
+                className="min-h-10 w-fit rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold"
+              >
+                Exportar estoque CSV
+              </button>
+            </div>
+
+            <div className="mt-6 flex flex-wrap gap-2">
+              {[
+                ["todos", "Todos"],
+                ["em_estoque", "Em estoque"],
+                ["poucas", "Poucas unidades"],
+                ["sem_estoque", "Sem estoque"],
+                ["traditional", "Tradicional"],
+                ["arabic_premium", "Arabe"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setStockFilter(value as StockFilter)}
+                  className={`min-h-10 rounded-full border px-4 text-xs font-semibold uppercase tracking-[0.14em] transition ${
+                    stockFilter === value
+                      ? "border-gold bg-gold text-black"
+                      : "border-gold/30 bg-gold/10 text-gold-light hover:border-gold-light"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {filteredStockRows.map(({ perfume, item, status }) => {
+                const slug = perfumeSlug(perfume);
+                const statusClass =
+                  status === "Em estoque"
+                    ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
+                    : status === "Poucas unidades"
+                      ? "border-gold/35 bg-gold/10 text-gold-light"
+                      : "border-red-400/30 bg-red-400/10 text-red-300";
+
+                return (
+                  <article key={perfume.name} className="border border-white/10 bg-black/25 p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.22em] text-gold/80">
+                          {perfume.collection}
+                        </p>
+                        <h3 className="mt-3 text-xl font-semibold uppercase tracking-[0.08em] text-white">
+                          {perfume.name}
+                        </h3>
+                      </div>
+                      <span
+                        className={`shrink-0 border px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${statusClass}`}
+                      >
+                        {status}
+                      </span>
+                    </div>
+
+                    <div className="mt-5 grid gap-3 text-sm text-stone-300 sm:grid-cols-2">
+                      <p>Tipo: {lineLabels[perfume.line]}</p>
+                      <p>Preco: {formatCurrency(getLinePrice(perfume.line))}</p>
+                      <p>Estoque atual: {item.quantity}</p>
+                      <p>Estoque minimo: {item.minQuantity}</p>
+                    </div>
+
+                    <p className="mt-4 text-xs text-stone-500">
+                      Atualizado: {item.updatedAt ? formatDate(item.updatedAt) : "Ainda nao alterado"}
+                    </p>
+
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => updateStockQuantity(slug, 1)}
+                        className="min-h-9 rounded-full border border-gold/35 px-3 text-xs font-semibold text-gold-light transition hover:border-gold"
+                      >
+                        +1
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateStockQuantity(slug, -1)}
+                        className="min-h-9 rounded-full border border-gold/35 px-3 text-xs font-semibold text-gold-light transition hover:border-gold"
+                      >
+                        -1
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => editStockQuantity(slug)}
+                        className="min-h-9 rounded-full border border-white/15 px-3 text-xs font-semibold text-stone-300 transition hover:border-gold/50 hover:text-gold-light"
+                      >
+                        Editar quantidade
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => editMinQuantity(slug)}
+                        className="min-h-9 rounded-full border border-white/15 px-3 text-xs font-semibold text-stone-300 transition hover:border-gold/50 hover:text-gold-light"
+                      >
+                        Editar estoque minimo
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="mt-8 premium-surface p-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gold">
+              Como usar o estoque
+            </p>
+            <div className="mt-5 grid gap-3 text-sm leading-7 text-stone-400 sm:grid-cols-2">
+              <p>Atualize o estoque sempre que produzir novos perfumes.</p>
+              <p>
+                Ao registrar uma venda, o sistema baixa automaticamente a
+                quantidade.
+              </p>
+              <p>Se vender sob encomenda, o estoque pode ficar zerado.</p>
+              <p>Exporte CSV regularmente para backup.</p>
+            </div>
+          </section>
 
           <div className="mt-8 premium-surface p-6">
             <p className="text-sm leading-7 text-stone-400">
