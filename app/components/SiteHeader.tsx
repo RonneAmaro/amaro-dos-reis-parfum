@@ -27,6 +27,12 @@ export default function SiteHeader() {
             Catalogo
           </Link>
           <Link
+            href="/apresentacao"
+            className="transition hover:text-gold-light"
+          >
+            Apresentacao
+          </Link>
+          <Link
             href="/disponibilidade"
             className="transition hover:text-gold-light"
           >

@@ -285,6 +285,26 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="px-6 py-16 sm:px-10 lg:px-12">
+        <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
+          <div className="max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.32em] text-gold">
+              Apresentacao comercial
+            </p>
+            <h2 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">
+              Veja uma apresentacao rapida das fragrancias por estilo, ocasiao
+              e personalidade.
+            </h2>
+          </div>
+          <Link
+            href="/apresentacao"
+            className="inline-flex min-h-12 w-fit items-center justify-center rounded-full bg-gold px-8 text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-gold-light"
+          >
+            Ver apresentacao
+          </Link>
+        </div>
+      </section>
+
       <section className="px-6 py-20 sm:px-10 lg:px-12">
         <div className="mx-auto max-w-4xl text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.32em] text-gold">
