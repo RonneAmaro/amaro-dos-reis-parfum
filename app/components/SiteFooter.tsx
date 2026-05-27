@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { createWhatsAppLink } from "@/lib/whatsapp";
 
 const whatsappHref = createWhatsAppLink(
@@ -10,9 +11,13 @@ export default function SiteFooter() {
     <footer className="border-t border-white/10 bg-[#030303] px-6 py-12 text-stone-500 sm:px-10 lg:px-12">
       <div className="mx-auto grid max-w-7xl gap-10 md:grid-cols-[1fr_auto] md:items-start">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-gold">
-            Amaro dos Reis Parfum
-          </p>
+          <Image
+            src="/logo-amaro-parfum.png"
+            alt="Amaro dos Reis Parfum"
+            width={180}
+            height={64}
+            className="h-16 w-auto object-contain"
+          />
           <p className="mt-4 max-w-xl leading-7">
             Perfumaria autoral com referencias olfativas premium, nomes
             proprios e curadoria proxima.
