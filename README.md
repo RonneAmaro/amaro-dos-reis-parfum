@@ -28,6 +28,16 @@ O painel interno pode usar Supabase para autenticar o acesso e salvar vendas,
 clientes e estoque por usuario. A configuracao completa esta em
 [`docs/supabase-setup.md`](docs/supabase-setup.md).
 
+## Catálogo público via Supabase
+
+O catalogo publico usa Supabase quando configurado. Se o Supabase nao estiver
+configurado, estiver vazio ou a consulta falhar, o site usa o fallback local de
+`lib/perfumes.ts`.
+
+Dados sensiveis como custo, dono do registro e estoque real nao sao expostos no
+site publico. Para ativar, aplique manualmente a migration da RPC publica e use
+o botao "Importar perfumes iniciais" no painel admin.
+
 ## Deploy na Vercel
 
 1. Crie ou importe o projeto na Vercel pelo GitHub.

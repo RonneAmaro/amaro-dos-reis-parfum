@@ -1244,6 +1244,76 @@ export default function AdminPage() {
     );
   }
 
+  async function importInitialPerfumes() {
+    if (!supabase || !authUser) {
+      setPerfumeMessage("Entre no modo Supabase para importar o catalogo inicial.");
+      return;
+    }
+
+    setIsPerfumeLoading(true);
+    setPerfumeMessage("");
+
+    const { data: existingRows, error: existingError } = await supabase
+      .from("amaro_perfumes")
+      .select("slug");
+
+    if (existingError) {
+      setPerfumeMessage("Nao foi possivel verificar os perfumes existentes.");
+      setIsPerfumeLoading(false);
+      return;
+    }
+
+    const existingSlugs = new Set(
+      ((existingRows ?? []) as { slug: string }[]).map((row) => row.slug)
+    );
+    const newPerfumes = perfumeCommerce
+      .map((perfume) => {
+        const slug = perfumeSlug(perfume);
+
+        return {
+          owner_id: authUser.id,
+          slug,
+          name: perfume.name,
+          inspiration: perfume.inspiration,
+          category: perfume.audience.toLowerCase(),
+          collection: perfume.collection,
+          bottle_type:
+            perfume.line === "arabic_premium" ? "arabe" : "tradicional",
+          price: perfume.priceCents / 100,
+          cost_price: 0,
+          stock_quantity: 0,
+          olfactive_family: perfume.family,
+          top_notes: null,
+          heart_notes: null,
+          base_notes: null,
+          short_description: perfume.description,
+          long_description: perfume.description,
+          tags: perfume.tags,
+          image_url: null,
+          availability_status: perfume.availabilityStatus,
+          is_active: true,
+        };
+      })
+      .filter((perfume) => !existingSlugs.has(perfume.slug));
+
+    if (newPerfumes.length === 0) {
+      setPerfumeMessage("Nenhum perfume novo para importar.");
+      setIsPerfumeLoading(false);
+      return;
+    }
+
+    const { error } = await supabase.from("amaro_perfumes").insert(newPerfumes);
+
+    if (error) {
+      setPerfumeMessage("Nao foi possivel importar o catalogo inicial.");
+      setIsPerfumeLoading(false);
+      return;
+    }
+
+    await loadSupabasePerfumes();
+    setPerfumeMessage("Catalogo inicial importado com sucesso.");
+  }
+
   function editPerfume(perfume: SupabasePerfumeRow) {
     setEditingPerfumeId(perfume.id);
     setPerfumeForm(mapPerfumeToForm(perfume));
@@ -2994,14 +3064,24 @@ export default function AdminPage() {
                   </p>
                 </div>
                 {isSupabaseMode ? (
-                  <button
-                    type="button"
-                    onClick={loadSupabasePerfumes}
-                    disabled={isPerfumeLoading}
-                    className="min-h-10 w-fit rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {isPerfumeLoading ? "Atualizando..." : "Atualizar perfumes"}
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={importInitialPerfumes}
+                      disabled={isPerfumeLoading}
+                      className="min-h-10 w-fit rounded-full bg-gold px-4 text-xs font-semibold uppercase tracking-[0.16em] text-black transition hover:bg-gold-light disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Importar perfumes iniciais
+                    </button>
+                    <button
+                      type="button"
+                      onClick={loadSupabasePerfumes}
+                      disabled={isPerfumeLoading}
+                      className="min-h-10 w-fit rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isPerfumeLoading ? "Atualizando..." : "Atualizar perfumes"}
+                    </button>
+                  </div>
                 ) : null}
               </div>
 

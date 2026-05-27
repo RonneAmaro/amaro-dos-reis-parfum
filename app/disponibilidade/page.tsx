@@ -1,9 +1,8 @@
 import {
   availabilityLabels,
-  formatPerfumePrice,
-  perfumeCommerce,
   type AvailabilityStatus,
 } from "@/lib/perfumes";
+import { getPublicPerfumes } from "@/lib/public-perfumes";
 import { createWhatsAppLink } from "@/lib/whatsapp";
 
 const statusGroups: { status: AvailabilityStatus; title: string }[] = [
@@ -16,7 +15,16 @@ const whatsappHref = createWhatsAppLink(
   "Ola! Quero consultar a disponibilidade dos perfumes da Amaro dos Reis Parfum."
 );
 
-export default function DisponibilidadePage() {
+function formatPrice(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(value);
+}
+
+export default async function DisponibilidadePage() {
+  const publicPerfumes = await getPublicPerfumes();
+
   return (
     <main className="min-h-screen bg-[#050505] text-stone-100">
       <section className="premium-bg relative overflow-hidden border-b border-gold/15 px-6 py-16 sm:px-10 lg:px-12">
@@ -48,7 +56,7 @@ export default function DisponibilidadePage() {
       <section className="px-6 py-16 sm:px-10 lg:px-12">
         <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-3">
           {statusGroups.map((group) => {
-            const perfumes = perfumeCommerce.filter(
+            const perfumes = publicPerfumes.filter(
               (perfume) => perfume.availabilityStatus === group.status
             );
 
@@ -72,7 +80,7 @@ export default function DisponibilidadePage() {
                     </article>
                   ) : (
                     perfumes.map((perfume) => (
-                      <article key={perfume.name} className="premium-surface p-5">
+                      <article key={perfume.slug} className="premium-surface p-5">
                         <p className="text-xs uppercase tracking-[0.22em] text-gold/80">
                           {perfume.collection}
                         </p>
@@ -81,7 +89,7 @@ export default function DisponibilidadePage() {
                         </h3>
                         <div className="mt-4 flex flex-wrap gap-2 text-xs text-stone-300">
                           <span className="border border-white/10 px-3 py-1">
-                            {formatPerfumePrice(perfume)}
+                            {formatPrice(perfume.price)}
                           </span>
                           <span className="border border-white/10 px-3 py-1 text-gold-light">
                             {availabilityLabels[perfume.availabilityStatus]}
