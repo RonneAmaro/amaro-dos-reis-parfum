@@ -14,6 +14,7 @@ import {
   perfumeSlug,
   type PerfumeLine,
 } from "@/lib/perfumes";
+import { createSlugFromName, splitNotes } from "@/lib/perfume-utils";
 import {
   BACKUP_INFO_STORAGE_KEY,
   CUSTOMERS_STORAGE_KEY,
@@ -21,10 +22,12 @@ import {
   STOCK_STORAGE_KEY,
 } from "@/lib/storage-keys";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase-browser";
+import { createWhatsAppLink } from "@/lib/whatsapp";
 
 type StoredPaymentMethod = "dinheiro" | "pix" | "cartao" | "cartão" | "fiado";
 type PaymentMethod = "dinheiro" | "pix" | "cartão" | "fiado";
 type SaleStatus = "pago" | "pendente";
+type AdminTab = "overview" | "sales" | "perfumes" | "alerts";
 type SaleFilter = "todos" | "pagos" | "pendentes";
 type PaymentFilter = "todos" | PaymentMethod;
 type CustomerFilter =
@@ -54,6 +57,8 @@ export type Sale = {
   notes: string;
   createdAt: string;
   paidAt?: string;
+  dueDate?: string;
+  customerPhone?: string;
 };
 
 type StockItem = {
@@ -107,6 +112,33 @@ type SaleForm = {
   paymentMethod: PaymentMethod;
   status: SaleStatus;
   notes: string;
+  customerPhone: string;
+  dueDate: string;
+};
+
+type PerfumeCategory = "masculino" | "feminino" | "unissex";
+type BottleType = "tradicional" | "arabe";
+type AvailabilityStatus = "available" | "limited" | "on_order";
+
+type PerfumeForm = {
+  name: string;
+  inspiration: string;
+  category: PerfumeCategory;
+  collection: string;
+  bottleType: BottleType;
+  price: string;
+  costPrice: string;
+  stockQuantity: string;
+  olfactiveFamily: string;
+  topNotes: string;
+  heartNotes: string;
+  baseNotes: string;
+  shortDescription: string;
+  longDescription: string;
+  tags: string;
+  imageUrl: string;
+  availabilityStatus: AvailabilityStatus;
+  isActive: boolean;
 };
 
 type AuthForm = {
@@ -128,6 +160,33 @@ type SupabaseSaleRow = {
   notes: string | null;
   created_at: string;
   paid_at: string | null;
+  due_date: string | null;
+  customer_phone: string | null;
+};
+
+type SupabasePerfumeRow = {
+  id: string;
+  slug: string;
+  name: string;
+  inspiration: string | null;
+  category: PerfumeCategory;
+  collection: string;
+  bottle_type: BottleType;
+  price: number | string;
+  cost_price: number | string;
+  stock_quantity: number;
+  olfactive_family: string | null;
+  top_notes: string | null;
+  heart_notes: string | null;
+  base_notes: string | null;
+  short_description: string | null;
+  long_description: string | null;
+  tags: string[] | null;
+  image_url: string | null;
+  availability_status: AvailabilityStatus;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 };
 
 const defaultPerfume = perfumeCommerce[0];
@@ -141,6 +200,29 @@ const initialForm: SaleForm = {
   paymentMethod: "pix",
   status: "pago",
   notes: "",
+  customerPhone: "",
+  dueDate: "",
+};
+
+const initialPerfumeForm: PerfumeForm = {
+  name: "",
+  inspiration: "",
+  category: "unissex",
+  collection: "",
+  bottleType: "tradicional",
+  price: "80",
+  costPrice: "0",
+  stockQuantity: "0",
+  olfactiveFamily: "",
+  topNotes: "",
+  heartNotes: "",
+  baseNotes: "",
+  shortDescription: "",
+  longDescription: "",
+  tags: "",
+  imageUrl: "",
+  availabilityStatus: "limited",
+  isActive: true,
 };
 
 const initialCustomerForm: CustomerForm = {
@@ -206,6 +288,31 @@ function mapSupabaseSale(row: SupabaseSaleRow): Sale {
     notes: row.notes ?? "",
     createdAt: row.created_at,
     paidAt: row.paid_at ?? undefined,
+    dueDate: row.due_date ?? undefined,
+    customerPhone: row.customer_phone ?? undefined,
+  };
+}
+
+function mapPerfumeToForm(perfume: SupabasePerfumeRow): PerfumeForm {
+  return {
+    name: perfume.name,
+    inspiration: perfume.inspiration ?? "",
+    category: perfume.category,
+    collection: perfume.collection,
+    bottleType: perfume.bottle_type,
+    price: String(Number(perfume.price) || 0),
+    costPrice: String(Number(perfume.cost_price) || 0),
+    stockQuantity: String(Number(perfume.stock_quantity) || 0),
+    olfactiveFamily: perfume.olfactive_family ?? "",
+    topNotes: perfume.top_notes ?? "",
+    heartNotes: perfume.heart_notes ?? "",
+    baseNotes: perfume.base_notes ?? "",
+    shortDescription: perfume.short_description ?? "",
+    longDescription: perfume.long_description ?? "",
+    tags: (perfume.tags ?? []).join(", "),
+    imageUrl: perfume.image_url ?? "",
+    availabilityStatus: perfume.availability_status,
+    isActive: perfume.is_active,
   };
 }
 
@@ -242,6 +349,63 @@ function formatDate(value: string) {
     dateStyle: "short",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function formatDateOnly(value?: string) {
+  if (!value) {
+    return "Sem vencimento";
+  }
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+  }).format(new Date(`${value}T12:00:00`));
+}
+
+function daysBetweenDates(targetDate: string) {
+  const today = new Date();
+  const todayOnly = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate()
+  );
+  const target = new Date(`${targetDate}T12:00:00`);
+  const targetOnly = new Date(
+    target.getFullYear(),
+    target.getMonth(),
+    target.getDate()
+  );
+
+  return Math.round(
+    (targetOnly.getTime() - todayOnly.getTime()) / (1000 * 60 * 60 * 24)
+  );
+}
+
+function describeDueDate(dueDate?: string) {
+  if (!dueDate) {
+    return "Sem vencimento definido";
+  }
+
+  const days = daysBetweenDates(dueDate);
+
+  if (days < 0) {
+    return `Venceu ha ${Math.abs(days)} dia${Math.abs(days) === 1 ? "" : "s"}`;
+  }
+
+  if (days === 0) {
+    return "Vence hoje";
+  }
+
+  return `Faltam ${days} dia${days === 1 ? "" : "s"}`;
+}
+
+function createCustomerWhatsAppLink(phone: string, message: string) {
+  const sanitizedPhone = phone.replace(/\D/g, "");
+
+  if (sanitizedPhone.length < 10) {
+    return "#";
+  }
+
+  return `https://wa.me/${sanitizedPhone}?text=${encodeURIComponent(message)}`;
 }
 
 function createId() {
@@ -337,6 +501,13 @@ export default function AdminPage() {
   const [isAuthLoading, setIsAuthLoading] = useState(isSupabaseConfigured);
   const [isSupabaseLoading, setIsSupabaseLoading] = useState(false);
   const [salesSource, setSalesSource] = useState<"local" | "supabase">("local");
+  const [activeTab, setActiveTab] = useState<AdminTab>("overview");
+  const [supabasePerfumes, setSupabasePerfumes] = useState<SupabasePerfumeRow[]>([]);
+  const [perfumeForm, setPerfumeForm] =
+    useState<PerfumeForm>(initialPerfumeForm);
+  const [editingPerfumeId, setEditingPerfumeId] = useState<string | null>(null);
+  const [perfumeMessage, setPerfumeMessage] = useState("");
+  const [isPerfumeLoading, setIsPerfumeLoading] = useState(false);
   const unitPrice = getLinePrice(form.lineType);
   const isSupabaseMode = isSupabaseConfigured && Boolean(authUser);
 
@@ -451,6 +622,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (isSupabaseMode) {
       loadSupabaseSales();
+      loadSupabasePerfumes();
     }
   }, [isSupabaseMode]);
 
@@ -693,6 +865,48 @@ export default function AdminPage() {
     [form.lineType, form.paymentMethod, form.quantity, unitPrice]
   );
 
+  const pendingSales = useMemo(
+    () => sales.filter((sale) => sale.status === "pendente"),
+    [sales]
+  );
+
+  const alertGroups = useMemo(() => {
+    return pendingSales.reduce(
+      (acc, sale) => {
+        if (!sale.dueDate) {
+          acc.noDueDate.push(sale);
+          return acc;
+        }
+
+        const days = daysBetweenDates(sale.dueDate);
+
+        if (days < 0) {
+          acc.overdue.push(sale);
+        } else if (days === 0) {
+          acc.today.push(sale);
+        } else if (days <= 7) {
+          acc.nextSevenDays.push(sale);
+        }
+
+        return acc;
+      },
+      {
+        overdue: [] as Sale[],
+        today: [] as Sale[],
+        nextSevenDays: [] as Sale[],
+        noDueDate: [] as Sale[],
+      }
+    );
+  }, [pendingSales]);
+
+  const pendingAlertTotal = useMemo(
+    () =>
+      pendingSales.reduce((total, sale) => total + saleProfit(sale).revenue, 0),
+    [pendingSales]
+  );
+
+  const needsDueDate = form.paymentMethod === "fiado" || form.status === "pendente";
+
   const selectedStock = useMemo(() => {
     return stock[form.perfumeSlug] ?? defaultStockItem(form.perfumeSlug);
   }, [form.perfumeSlug, stock]);
@@ -720,7 +934,7 @@ export default function AdminPage() {
     const { data, error } = await supabase
       .from("amaro_sales")
       .select(
-        "id, customer_name, perfume_slug, perfume_name, line_type, unit_price, cost_price, quantity, payment_method, status, notes, created_at, paid_at"
+        "id, customer_name, perfume_slug, perfume_name, line_type, unit_price, cost_price, quantity, payment_method, status, notes, created_at, paid_at, due_date, customer_phone"
       )
       .order("created_at", { ascending: false });
 
@@ -735,6 +949,30 @@ export default function AdminPage() {
     }
 
     setIsSupabaseLoading(false);
+  }
+
+  async function loadSupabasePerfumes() {
+    if (!supabase || !authUser) {
+      return;
+    }
+
+    setIsPerfumeLoading(true);
+    setPerfumeMessage("");
+
+    const { data, error } = await supabase
+      .from("amaro_perfumes")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      setPerfumeMessage(
+        "Nao foi possivel carregar os perfumes. Confira a migration do Pacote 11."
+      );
+    } else {
+      setSupabasePerfumes((data ?? []) as SupabasePerfumeRow[]);
+    }
+
+    setIsPerfumeLoading(false);
   }
 
   function handlePerfumeChange(nextSlug: string) {
@@ -806,6 +1044,8 @@ export default function AdminPage() {
 
     setSalesSource("local");
     setSales(readLocalSales());
+    setSupabasePerfumes([]);
+    setEditingPerfumeId(null);
     await supabase.auth.signOut();
     setAuthUser(null);
     setSalesMessage("Voce saiu do modo Supabase.");
@@ -876,6 +1116,8 @@ export default function AdminPage() {
         payment_method: toSupabasePaymentMethod(form.paymentMethod),
         status: form.status,
         notes: form.notes.trim() || null,
+        customer_phone: form.customerPhone.trim() || null,
+        due_date: form.dueDate || null,
         paid_at: paidAt,
       });
 
@@ -904,6 +1146,8 @@ export default function AdminPage() {
       paymentMethod: form.paymentMethod,
       status: form.status,
       notes: form.notes.trim(),
+      customerPhone: form.customerPhone.trim() || undefined,
+      dueDate: form.dueDate || undefined,
       createdAt: new Date().toISOString(),
       paidAt: form.status === "pago" ? new Date().toISOString() : undefined,
     };
@@ -931,6 +1175,105 @@ export default function AdminPage() {
       };
     });
     setForm(initialForm);
+  }
+
+  async function handlePerfumeSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!supabase || !authUser) {
+      setPerfumeMessage(
+        "O cadastro dinamico de perfumes precisa do Supabase ativo."
+      );
+      return;
+    }
+
+    const name = perfumeForm.name.trim();
+    const collection = perfumeForm.collection.trim();
+
+    if (!name || !collection) {
+      setPerfumeMessage("Informe nome autoral e colecao.");
+      return;
+    }
+
+    setIsPerfumeLoading(true);
+    setPerfumeMessage("");
+
+    const payload = {
+      owner_id: authUser.id,
+      slug: createSlugFromName(name),
+      name,
+      inspiration: perfumeForm.inspiration.trim() || null,
+      category: perfumeForm.category,
+      collection,
+      bottle_type: perfumeForm.bottleType,
+      price: Number(perfumeForm.price) || 0,
+      cost_price: Number(perfumeForm.costPrice) || 0,
+      stock_quantity: Math.max(0, Number(perfumeForm.stockQuantity) || 0),
+      olfactive_family: perfumeForm.olfactiveFamily.trim() || null,
+      top_notes: perfumeForm.topNotes.trim() || null,
+      heart_notes: perfumeForm.heartNotes.trim() || null,
+      base_notes: perfumeForm.baseNotes.trim() || null,
+      short_description: perfumeForm.shortDescription.trim() || null,
+      long_description: perfumeForm.longDescription.trim() || null,
+      tags: splitNotes(perfumeForm.tags),
+      image_url: perfumeForm.imageUrl.trim() || null,
+      availability_status: perfumeForm.availabilityStatus,
+      is_active: perfumeForm.isActive,
+    };
+
+    const response = editingPerfumeId
+      ? await supabase
+          .from("amaro_perfumes")
+          .update(payload)
+          .eq("id", editingPerfumeId)
+      : await supabase.from("amaro_perfumes").insert(payload);
+
+    if (response.error) {
+      setPerfumeMessage(
+        "Nao foi possivel salvar o perfume. Verifique se o slug ja existe."
+      );
+      setIsPerfumeLoading(false);
+      return;
+    }
+
+    setPerfumeForm(initialPerfumeForm);
+    setEditingPerfumeId(null);
+    await loadSupabasePerfumes();
+    setPerfumeMessage(
+      editingPerfumeId ? "Perfume atualizado." : "Perfume cadastrado."
+    );
+  }
+
+  function editPerfume(perfume: SupabasePerfumeRow) {
+    setEditingPerfumeId(perfume.id);
+    setPerfumeForm(mapPerfumeToForm(perfume));
+    setPerfumeMessage("Editando perfume selecionado.");
+  }
+
+  async function deletePerfume(id: string) {
+    if (!supabase) {
+      return;
+    }
+
+    const confirmed = window.confirm("Excluir este perfume cadastrado?");
+
+    if (!confirmed) {
+      return;
+    }
+
+    setIsPerfumeLoading(true);
+    setPerfumeMessage("");
+
+    const { error } = await supabase.from("amaro_perfumes").delete().eq("id", id);
+
+    if (error) {
+      setPerfumeMessage("Nao foi possivel excluir o perfume.");
+      setIsPerfumeLoading(false);
+      return;
+    }
+
+    await loadSupabasePerfumes();
+    setPerfumeMessage("Perfume excluido.");
   }
 
   async function markAsPaid(id: string) {
@@ -1129,6 +1472,8 @@ export default function AdminPage() {
       "total",
       "forma_pagamento",
       "status",
+      "telefone_cliente",
+      "vencimento",
       "data",
       "observacao",
       "custo_estimado",
@@ -1150,6 +1495,8 @@ export default function AdminPage() {
         profit.revenue,
         paymentLabels[paymentMethod],
         statusLabels[sale.status],
+        sale.customerPhone ?? "",
+        sale.dueDate ? formatDateOnly(sale.dueDate) : "",
         formatDate(sale.createdAt),
         sale.notes,
         profit.estimatedCost.toFixed(2),
@@ -1510,6 +1857,58 @@ export default function AdminPage() {
             </div>
           </section>
 
+          <div className="mb-8 flex flex-wrap gap-2">
+            {[
+              ["overview", "Visao geral"],
+              ["sales", "Vendas"],
+              ["perfumes", "Perfumes"],
+              ["alerts", "Alertas"],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setActiveTab(value as AdminTab)}
+                className={`min-h-10 rounded-full border px-4 text-xs font-semibold uppercase tracking-[0.14em] transition ${
+                  activeTab === value
+                    ? "border-gold bg-gold text-black"
+                    : "border-gold/30 bg-gold/10 text-gold-light hover:border-gold-light"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {activeTab === "overview" ? (
+            <>
+              <div className="mb-4 grid gap-4 md:grid-cols-3">
+                <article className="border border-red-400/30 bg-red-950/25 p-5">
+                  <p className="text-xs uppercase tracking-[0.24em] text-red-300">
+                    Vencidas
+                  </p>
+                  <p className="mt-3 text-2xl font-semibold text-red-200">
+                    {alertGroups.overdue.length}
+                  </p>
+                </article>
+                <article className="border border-gold/35 bg-gold/10 p-5">
+                  <p className="text-xs uppercase tracking-[0.24em] text-gold">
+                    Vencem hoje
+                  </p>
+                  <p className="mt-3 text-2xl font-semibold text-gold-light">
+                    {alertGroups.today.length}
+                  </p>
+                </article>
+                <article className="border border-white/10 bg-black/25 p-5">
+                  <p className="text-xs uppercase tracking-[0.24em] text-stone-500">
+                    Total pendente
+                  </p>
+                  <p className="mt-3 text-2xl font-semibold text-gold-light">
+                    {formatCurrency(pendingAlertTotal)} em {pendingSales.length} pendencia
+                    {pendingSales.length === 1 ? "" : "s"}
+                  </p>
+                </article>
+              </div>
+
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {summaryCards.map(([label, value]) => (
               <article key={label} className="premium-surface p-5">
@@ -1581,6 +1980,11 @@ export default function AdminPage() {
             </section>
           </div>
 
+            </>
+          ) : null}
+
+          {activeTab === "sales" ? (
+            <>
           <div className="mt-8 grid gap-8 xl:grid-cols-[0.82fr_1.18fr]">
             <form onSubmit={handleSubmit} className="premium-surface p-6">
               <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
@@ -1637,6 +2041,47 @@ export default function AdminPage() {
                     className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
                   />
                 </label>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label>
+                    <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                      Telefone do cliente
+                    </span>
+                    <input
+                      value={form.customerPhone}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          customerPhone: event.target.value,
+                        }))
+                      }
+                      className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
+                    />
+                  </label>
+
+                  <label>
+                    <span
+                      className={`text-xs uppercase tracking-[0.22em] ${
+                        needsDueDate ? "text-gold" : "text-stone-500"
+                      }`}
+                    >
+                      Data de vencimento
+                    </span>
+                    <input
+                      type="date"
+                      value={form.dueDate}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          dueDate: event.target.value,
+                        }))
+                      }
+                      className={`mt-2 min-h-11 w-full border bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold ${
+                        needsDueDate ? "border-gold bg-gold/10" : "border-gold/25"
+                      }`}
+                    />
+                  </label>
+                </div>
 
                 <label>
                   <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
@@ -1917,6 +2362,14 @@ export default function AdminPage() {
                               {paymentLabels[paymentMethod]} &bull;{" "}
                               {formatDate(sale.createdAt)}
                             </p>
+                            {sale.customerPhone || sale.dueDate ? (
+                              <p className="mt-2 text-sm text-gold-light">
+                                {sale.customerPhone
+                                  ? `WhatsApp: ${sale.customerPhone}`
+                                  : "Sem telefone"}{" "}
+                                &bull; Vencimento: {formatDateOnly(sale.dueDate)}
+                              </p>
+                            ) : null}
 
                             <div className="mt-4 grid gap-2 text-sm text-stone-300 sm:grid-cols-2">
                               <p>Venda: {formatCurrency(profit.revenue)}</p>
@@ -2522,6 +2975,359 @@ export default function AdminPage() {
               </div>
             </div>
           </section>
+
+            </>
+          ) : null}
+
+          {activeTab === "perfumes" ? (
+            <section className="premium-surface p-6">
+              <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gold">
+                    Perfumes
+                  </p>
+                  <h2 className="mt-3 text-2xl font-semibold text-white">
+                    Cadastro dinamico de perfumes
+                  </h2>
+                  <p className="mt-3 text-sm leading-7 text-stone-400">
+                    Futuro: carregar perfumes ativos do Supabase para catalogo publico.
+                  </p>
+                </div>
+                {isSupabaseMode ? (
+                  <button
+                    type="button"
+                    onClick={loadSupabasePerfumes}
+                    disabled={isPerfumeLoading}
+                    className="min-h-10 w-fit rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isPerfumeLoading ? "Atualizando..." : "Atualizar perfumes"}
+                  </button>
+                ) : null}
+              </div>
+
+              {!isSupabaseMode ? (
+                <div className="mt-6 border border-gold/25 bg-gold/10 p-5 text-sm leading-7 text-gold-light">
+                  O cadastro dinamico de perfumes estara disponivel quando o Supabase estiver configurado e voce estiver logado.
+                </div>
+              ) : (
+                <div className="mt-6 grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+                  <form
+                    onSubmit={handlePerfumeSubmit}
+                    className="border border-white/10 bg-black/25 p-5"
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
+                      {editingPerfumeId ? "Editar perfume" : "Novo perfume"}
+                    </p>
+                    <div className="mt-5 grid gap-4">
+                      {[
+                        ["Nome autoral", "name"],
+                        ["Inspiracao olfativa", "inspiration"],
+                        ["Colecao", "collection"],
+                        ["Familia olfativa", "olfactiveFamily"],
+                        ["Notas de topo", "topNotes"],
+                        ["Notas de coracao", "heartNotes"],
+                        ["Notas de fundo", "baseNotes"],
+                        ["Descricao curta", "shortDescription"],
+                        ["Tags separadas por virgula", "tags"],
+                        ["URL da imagem", "imageUrl"],
+                      ].map(([label, key]) => (
+                        <label key={key}>
+                          <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                            {label}
+                          </span>
+                          <input
+                            required={key === "name" || key === "collection"}
+                            value={String(perfumeForm[key as keyof PerfumeForm])}
+                            onChange={(event) =>
+                              setPerfumeForm((current) => ({
+                                ...current,
+                                [key]: event.target.value,
+                              }))
+                            }
+                            className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
+                          />
+                        </label>
+                      ))}
+
+                      <div className="grid gap-4 sm:grid-cols-3">
+                        <label>
+                          <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                            Categoria
+                          </span>
+                          <select
+                            value={perfumeForm.category}
+                            onChange={(event) =>
+                              setPerfumeForm((current) => ({
+                                ...current,
+                                category: event.target.value as PerfumeCategory,
+                              }))
+                            }
+                            className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
+                          >
+                            <option value="masculino">Masculino</option>
+                            <option value="feminino">Feminino</option>
+                            <option value="unissex">Unissex</option>
+                          </select>
+                        </label>
+                        <label>
+                          <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                            Tipo da linha
+                          </span>
+                          <select
+                            value={perfumeForm.bottleType}
+                            onChange={(event) =>
+                              setPerfumeForm((current) => ({
+                                ...current,
+                                bottleType: event.target.value as BottleType,
+                              }))
+                            }
+                            className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
+                          >
+                            <option value="tradicional">Tradicional</option>
+                            <option value="arabe">Arabe</option>
+                          </select>
+                        </label>
+                        <label>
+                          <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                            Disponibilidade
+                          </span>
+                          <select
+                            value={perfumeForm.availabilityStatus}
+                            onChange={(event) =>
+                              setPerfumeForm((current) => ({
+                                ...current,
+                                availabilityStatus: event.target.value as AvailabilityStatus,
+                              }))
+                            }
+                            className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
+                          >
+                            <option value="available">Disponivel</option>
+                            <option value="limited">Poucas unidades</option>
+                            <option value="on_order">Sob encomenda</option>
+                          </select>
+                        </label>
+                      </div>
+
+                      <div className="grid gap-4 sm:grid-cols-3">
+                        {[
+                          ["Preco", "price"],
+                          ["Custo", "costPrice"],
+                          ["Estoque", "stockQuantity"],
+                        ].map(([label, key]) => (
+                          <label key={key}>
+                            <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                              {label}
+                            </span>
+                            <input
+                              min={0}
+                              step={key === "stockQuantity" ? 1 : 0.01}
+                              type="number"
+                              value={String(perfumeForm[key as keyof PerfumeForm])}
+                              onChange={(event) =>
+                                setPerfumeForm((current) => ({
+                                  ...current,
+                                  [key]: event.target.value,
+                                }))
+                              }
+                              className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
+                            />
+                          </label>
+                        ))}
+                      </div>
+
+                      <label>
+                        <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                          Descricao longa
+                        </span>
+                        <textarea
+                          rows={4}
+                          value={perfumeForm.longDescription}
+                          onChange={(event) =>
+                            setPerfumeForm((current) => ({
+                              ...current,
+                              longDescription: event.target.value,
+                            }))
+                          }
+                          className="mt-2 w-full resize-none border border-gold/25 bg-black/45 px-4 py-3 text-sm text-white outline-none transition focus:border-gold"
+                        />
+                      </label>
+
+                      <label className="flex items-center gap-3 text-sm text-stone-300">
+                        <input
+                          type="checkbox"
+                          checked={perfumeForm.isActive}
+                          onChange={(event) =>
+                            setPerfumeForm((current) => ({
+                              ...current,
+                              isActive: event.target.checked,
+                            }))
+                          }
+                        />
+                        Ativo no cadastro
+                      </label>
+
+                      {perfumeMessage ? (
+                        <p className="text-sm leading-6 text-gold-light">
+                          {perfumeMessage}
+                        </p>
+                      ) : null}
+
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="submit"
+                          disabled={isPerfumeLoading}
+                          className="min-h-10 rounded-full bg-gold px-5 text-xs font-semibold uppercase tracking-[0.16em] text-black transition hover:bg-gold-light disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {editingPerfumeId ? "Salvar edicao" : "Cadastrar perfume"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPerfumeForm(initialPerfumeForm);
+                            setEditingPerfumeId(null);
+                            setPerfumeMessage("");
+                          }}
+                          className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold"
+                        >
+                          Limpar
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+
+                  <div className="grid gap-3">
+                    {supabasePerfumes.length === 0 ? (
+                      <div className="border border-white/10 bg-black/25 p-6 text-center">
+                        <p className="text-sm text-stone-500">
+                          Nenhum perfume dinamico cadastrado ainda.
+                        </p>
+                      </div>
+                    ) : (
+                      supabasePerfumes.map((perfume) => (
+                        <article
+                          key={perfume.id}
+                          className="border border-white/10 bg-black/25 p-5"
+                        >
+                          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.22em] text-gold/80">
+                                {perfume.collection}
+                              </p>
+                              <h3 className="mt-2 text-xl font-semibold text-white">
+                                {perfume.name}
+                              </h3>
+                              <p className="mt-2 text-sm text-stone-400">
+                                {perfume.inspiration || "Sem inspiracao"} &bull; {formatCurrency(Number(perfume.price) || 0)} &bull; Estoque {perfume.stock_quantity}
+                              </p>
+                              <p className="mt-2 text-sm text-stone-500">
+                                {perfume.availability_status} &bull; {perfume.is_active ? "Ativo" : "Inativo"}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => editPerfume(perfume)}
+                                className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold"
+                              >
+                                Editar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deletePerfume(perfume.id)}
+                                className="min-h-10 rounded-full border border-red-400/30 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-red-300 transition hover:bg-red-400/10"
+                              >
+                                Excluir
+                              </button>
+                            </div>
+                          </div>
+                        </article>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </section>
+          ) : null}
+
+          {activeTab === "alerts" ? (
+            <section className="premium-surface p-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gold">
+                Alertas
+              </p>
+              <h2 className="mt-3 text-2xl font-semibold text-white">
+                Fiados e vendas pendentes
+              </h2>
+              <div className="mt-6 grid gap-6">
+                {[
+                  ["Vencidas", alertGroups.overdue],
+                  ["Vencem hoje", alertGroups.today],
+                  ["Proximos 7 dias", alertGroups.nextSevenDays],
+                  ["Sem vencimento", alertGroups.noDueDate],
+                ].map(([title, group]) => (
+                  <div key={title as string}>
+                    <h3 className="text-lg font-semibold text-gold-light">
+                      {title as string}
+                    </h3>
+                    <div className="mt-3 grid gap-3">
+                      {(group as Sale[]).length === 0 ? (
+                        <div className="border border-white/10 bg-black/25 p-5 text-sm text-stone-500">
+                          Nenhuma pendencia nesta categoria.
+                        </div>
+                      ) : (
+                        (group as Sale[]).map((sale) => {
+                          const total = saleProfit(sale).revenue;
+                          const message = sale.customerPhone
+                            ? `Ola, tudo bem? Passando para lembrar sobre o perfume ${sale.perfumeName} da Amaro dos Reis Parfum, no valor de ${formatCurrency(total)}, com vencimento em ${formatDateOnly(sale.dueDate)}.`
+                            : `Lembrete: cliente ${sale.customerName} tem pagamento pendente do perfume ${sale.perfumeName}, valor ${formatCurrency(total)}, vencimento ${formatDateOnly(sale.dueDate)}.`;
+                          const href = sale.customerPhone
+                            ? createCustomerWhatsAppLink(sale.customerPhone, message)
+                            : createWhatsAppLink(message);
+
+                          return (
+                            <article
+                              key={sale.id}
+                              className="border border-white/10 bg-black/25 p-5"
+                            >
+                              <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+                                <div>
+                                  <h4 className="text-xl font-semibold text-white">
+                                    {sale.customerName}
+                                  </h4>
+                                  <p className="mt-2 text-sm text-stone-300">
+                                    {sale.perfumeName} &bull; {formatCurrency(total)}
+                                  </p>
+                                  <p className="mt-2 text-sm text-stone-500">
+                                    {sale.customerPhone || "Sem telefone"} &bull; {formatDateOnly(sale.dueDate)} &bull; {describeDueDate(sale.dueDate)}
+                                  </p>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => markAsPaid(sale.id)}
+                                    className="min-h-10 rounded-full border border-emerald-400/30 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-300 transition hover:bg-emerald-400/10"
+                                  >
+                                    Marcar como pago
+                                  </button>
+                                  <a
+                                    href={href}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="flex min-h-10 items-center rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold"
+                                  >
+                                    Abrir WhatsApp
+                                  </a>
+                                </div>
+                              </div>
+                            </article>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           <div className="mt-8 premium-surface p-6">
             <p className="text-sm leading-7 text-stone-400">
