@@ -5,6 +5,8 @@ const whatsappHref = createWhatsAppLink(
   "Olá! Quero conhecer os perfumes da Amaro dos Reis Parfum."
 );
 
+const showDevAdminLink = process.env.NODE_ENV === "development";
+
 export default function SiteHeader() {
   return (
     <header className="sticky top-0 z-50 border-b border-gold/15 bg-black/80 backdrop-blur-xl">
@@ -41,12 +43,14 @@ export default function SiteHeader() {
           <Link href="/contato" className="transition hover:text-gold-light">
             Contato
           </Link>
-          <Link
-            href="/admin"
-            className="text-stone-600 transition hover:text-gold-light"
-          >
-            Painel
-          </Link>
+          {showDevAdminLink ? (
+            <Link
+              href="/admin"
+              className="text-stone-600 transition hover:text-gold-light"
+            >
+              Painel
+            </Link>
+          ) : null}
           <a
             href={whatsappHref}
             target="_blank"

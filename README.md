@@ -38,6 +38,16 @@ Dados sensiveis como custo, dono do registro e estoque real nao sao expostos no
 site publico. Para ativar, aplique manualmente a migration da RPC publica e use
 o botao "Importar perfumes iniciais" no painel admin.
 
+## Segurança do painel admin
+
+O `/admin` fica oculto do menu publico. O acesso depende de Supabase Auth e da
+tabela `amaro_admin_members`; usuarios autenticados que nao estiverem ativos
+nessa tabela nao entram no painel.
+
+O primeiro `owner` precisa ser inserido manualmente pelo SQL Editor depois que o
+usuario existir no Supabase Auth. Veja o passo a passo em
+[`docs/admin-access.md`](docs/admin-access.md).
+
 ## Deploy na Vercel
 
 1. Crie ou importe o projeto na Vercel pelo GitHub.

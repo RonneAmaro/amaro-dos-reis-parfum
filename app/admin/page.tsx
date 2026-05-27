@@ -27,6 +27,7 @@ import { createWhatsAppLink } from "@/lib/whatsapp";
 type StoredPaymentMethod = "dinheiro" | "pix" | "cartao" | "cartão" | "fiado";
 type PaymentMethod = "dinheiro" | "pix" | "cartão" | "fiado";
 type SaleStatus = "pago" | "pendente";
+type AdminRole = "owner" | "admin" | "seller";
 type AdminTab = "overview" | "sales" | "perfumes" | "alerts";
 type SaleFilter = "todos" | "pagos" | "pendentes";
 type PaymentFilter = "todos" | PaymentMethod;
@@ -187,6 +188,11 @@ type SupabasePerfumeRow = {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+};
+
+type AdminMemberRow = {
+  role: AdminRole;
+  is_active: boolean;
 };
 
 const defaultPerfume = perfumeCommerce[0];
@@ -495,6 +501,8 @@ export default function AdminPage() {
   const [isStockLoaded, setIsStockLoaded] = useState(false);
   const [isCustomersLoaded, setIsCustomersLoaded] = useState(false);
   const [authUser, setAuthUser] = useState<User | null>(null);
+  const [adminRole, setAdminRole] = useState<AdminRole | null>(null);
+  const [isAdminCheckLoading, setIsAdminCheckLoading] = useState(false);
   const [authForm, setAuthForm] = useState<AuthForm>(initialAuthForm);
   const [authMessage, setAuthMessage] = useState("");
   const [salesMessage, setSalesMessage] = useState("");
@@ -509,7 +517,17 @@ export default function AdminPage() {
   const [perfumeMessage, setPerfumeMessage] = useState("");
   const [isPerfumeLoading, setIsPerfumeLoading] = useState(false);
   const unitPrice = getLinePrice(form.lineType);
-  const isSupabaseMode = isSupabaseConfigured && Boolean(authUser);
+  const isDevelopment = process.env.NODE_ENV === "development";
+  const isAuthorizedAdmin = Boolean(adminRole);
+  const isSupabaseMode =
+    isSupabaseConfigured && Boolean(authUser) && isAuthorizedAdmin;
+  const canManagePerfumes =
+    !isSupabaseConfigured || adminRole === "owner" || adminRole === "admin";
+  const canManageSales =
+    !isSupabaseConfigured ||
+    adminRole === "owner" ||
+    adminRole === "admin" ||
+    adminRole === "seller";
 
   useEffect(() => {
     setSales(readLocalSales());
@@ -602,6 +620,8 @@ export default function AdminPage() {
     supabase.auth.getUser().then(({ data }) => {
       if (isMounted) {
         setAuthUser(data.user);
+        setAdminRole(null);
+        setIsAdminCheckLoading(Boolean(data.user));
         setIsAuthLoading(false);
       }
     });
@@ -610,6 +630,8 @@ export default function AdminPage() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setAuthUser(session?.user ?? null);
+      setAdminRole(null);
+      setIsAdminCheckLoading(Boolean(session?.user));
       setAuthMessage("");
     });
 
@@ -620,11 +642,50 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
+    async function loadAdminMember() {
+      if (!supabase || !authUser) {
+        setAdminRole(null);
+        setIsAdminCheckLoading(false);
+        return;
+      }
+
+      setIsAdminCheckLoading(true);
+
+      const { data, error } = await supabase
+        .from("amaro_admin_members")
+        .select("role, is_active")
+        .eq("user_id", authUser.id)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (error || !data) {
+        setAdminRole(null);
+      } else {
+        setAdminRole((data as AdminMemberRow).role);
+      }
+
+      setIsAdminCheckLoading(false);
+    }
+
+    if (isSupabaseConfigured) {
+      loadAdminMember();
+    }
+  }, [authUser]);
+
+  useEffect(() => {
     if (isSupabaseMode) {
       loadSupabaseSales();
-      loadSupabasePerfumes();
+      if (canManagePerfumes) {
+        loadSupabasePerfumes();
+      }
     }
-  }, [isSupabaseMode]);
+  }, [canManagePerfumes, isSupabaseMode]);
+
+  useEffect(() => {
+    if (!canManagePerfumes && activeTab === "perfumes") {
+      setActiveTab("sales");
+    }
+  }, [activeTab, canManagePerfumes]);
 
   const filteredSales = useMemo(() => {
     return sales.filter((sale) => {
@@ -952,7 +1013,7 @@ export default function AdminPage() {
   }
 
   async function loadSupabasePerfumes() {
-    if (!supabase || !authUser) {
+    if (!supabase || !authUser || !canManagePerfumes) {
       return;
     }
 
@@ -1180,7 +1241,7 @@ export default function AdminPage() {
   async function handlePerfumeSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!supabase || !authUser) {
+    if (!supabase || !authUser || !canManagePerfumes) {
       setPerfumeMessage(
         "O cadastro dinamico de perfumes precisa do Supabase ativo."
       );
@@ -1245,7 +1306,7 @@ export default function AdminPage() {
   }
 
   async function importInitialPerfumes() {
-    if (!supabase || !authUser) {
+    if (!supabase || !authUser || !canManagePerfumes) {
       setPerfumeMessage("Entre no modo Supabase para importar o catalogo inicial.");
       return;
     }
@@ -1321,7 +1382,7 @@ export default function AdminPage() {
   }
 
   async function deletePerfume(id: string) {
-    if (!supabase) {
+    if (!supabase || !canManagePerfumes) {
       return;
     }
 
@@ -1792,19 +1853,193 @@ export default function AdminPage() {
     ["Maior pendencia individual", formatCurrency(customerStats.biggestPending)],
   ];
 
+  if (!isSupabaseConfigured && !isDevelopment) {
+    return (
+      <main className="min-h-screen bg-[#050505] text-stone-100">
+        <section className="premium-bg border-b border-gold/15 px-6 py-20 sm:px-10 lg:px-12">
+          <div className="mx-auto max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.34em] text-gold">
+              Painel interno
+            </p>
+            <h1 className="mt-5 text-4xl font-semibold uppercase leading-tight text-white sm:text-6xl">
+              Painel indisponivel.
+            </h1>
+            <p className="mt-6 leading-8 text-stone-300">
+              Configure o Supabase para acessar.
+            </p>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (isSupabaseConfigured && isAuthLoading) {
+    return (
+      <main className="min-h-screen bg-[#050505] text-stone-100">
+        <section className="premium-bg border-b border-gold/15 px-6 py-20 sm:px-10 lg:px-12">
+          <div className="mx-auto max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.34em] text-gold">
+              Painel interno
+            </p>
+            <h1 className="mt-5 text-4xl font-semibold uppercase leading-tight text-white">
+              Verificando sessao...
+            </h1>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (isSupabaseConfigured && !authUser) {
+    return (
+      <main className="min-h-screen bg-[#050505] text-stone-100">
+        <section className="premium-bg border-b border-gold/15 px-6 py-16 sm:px-10 lg:px-12">
+          <div className="mx-auto max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.34em] text-gold">
+              Acesso restrito
+            </p>
+            <h1 className="mt-5 text-4xl font-semibold uppercase leading-tight text-white sm:text-6xl">
+              Painel interno
+            </h1>
+            <p className="mt-6 leading-8 text-stone-300">
+              Entre com um usuario autorizado da Amaro dos Reis Parfum.
+            </p>
+          </div>
+        </section>
+
+        <section className="px-6 py-10 sm:px-10 lg:px-12">
+          <form
+            onSubmit={handleSignIn}
+            className="mx-auto grid max-w-xl gap-4 premium-surface p-6"
+          >
+            <label>
+              <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                Email
+              </span>
+              <input
+                type="email"
+                required
+                value={authForm.email}
+                onChange={(event) =>
+                  setAuthForm((current) => ({
+                    ...current,
+                    email: event.target.value,
+                  }))
+                }
+                className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
+              />
+            </label>
+            <label>
+              <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                Senha
+              </span>
+              <input
+                type="password"
+                required
+                value={authForm.password}
+                onChange={(event) =>
+                  setAuthForm((current) => ({
+                    ...current,
+                    password: event.target.value,
+                  }))
+                }
+                className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
+              />
+            </label>
+            {authMessage ? (
+              <p className="text-sm leading-6 text-gold-light">{authMessage}</p>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="submit"
+                disabled={isAuthLoading}
+                className="min-h-10 rounded-full bg-gold px-5 text-xs font-semibold uppercase tracking-[0.16em] text-black transition hover:bg-gold-light disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Entrar
+              </button>
+              {isDevelopment ? (
+                <button
+                  type="button"
+                  onClick={handleSignUp}
+                  disabled={isAuthLoading}
+                  className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Criar acesso dev
+                </button>
+              ) : null}
+            </div>
+            {isDevelopment ? (
+              <p className="text-xs leading-6 text-stone-500">
+                Criar acesso aparece apenas em desenvolvimento. Em producao, o
+                usuario deve ser criado e autorizado no Supabase.
+              </p>
+            ) : null}
+          </form>
+        </section>
+      </main>
+    );
+  }
+
+  if (isSupabaseConfigured && authUser && isAdminCheckLoading) {
+    return (
+      <main className="min-h-screen bg-[#050505] text-stone-100">
+        <section className="premium-bg border-b border-gold/15 px-6 py-20 sm:px-10 lg:px-12">
+          <div className="mx-auto max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.34em] text-gold">
+              Painel interno
+            </p>
+            <h1 className="mt-5 text-4xl font-semibold uppercase leading-tight text-white">
+              Verificando autorizacao...
+            </h1>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (isSupabaseConfigured && authUser && !adminRole) {
+    return (
+      <main className="min-h-screen bg-[#050505] text-stone-100">
+        <section className="premium-bg border-b border-gold/15 px-6 py-20 sm:px-10 lg:px-12">
+          <div className="mx-auto max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.34em] text-gold">
+              Acesso nao autorizado
+            </p>
+            <h1 className="mt-5 text-4xl font-semibold uppercase leading-tight text-white sm:text-6xl">
+              Este painel e restrito.
+            </h1>
+            <p className="mt-6 leading-8 text-stone-300">
+              Este painel e restrito aos administradores da Amaro dos Reis
+              Parfum.
+            </p>
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="mt-9 min-h-12 rounded-full bg-gold px-8 text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-gold-light"
+            >
+              Sair
+            </button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-[#050505] text-stone-100">
       <section className="premium-bg border-b border-gold/15 px-6 py-12 sm:px-10 lg:px-12">
         <div className="mx-auto max-w-7xl">
           <p className="text-xs font-semibold uppercase tracking-[0.34em] text-gold">
-            {isSupabaseMode ? "Modo Supabase" : "Modo local"}
+            {isSupabaseMode
+              ? `Acesso autorizado: ${adminRole}`
+              : "Modo local"}
           </p>
           <h1 className="mt-5 text-4xl font-semibold uppercase leading-tight text-white sm:text-5xl">
             Painel interno &mdash; Amaro dos Reis Parfum
           </h1>
           <p className="mt-5 max-w-3xl leading-8 text-stone-300">
             {isSupabaseMode
-              ? "Banco Supabase ativo: vendas carregadas com login e protegidas por usuario."
+              ? "Banco Supabase ativo: painel restrito aos administradores autorizados."
               : "Modo local: os dados ficam salvos apenas neste navegador."}
           </p>
         </div>
@@ -1827,7 +2062,9 @@ export default function AdminPage() {
                 </h2>
                 <p className="mt-3 max-w-3xl text-sm leading-7 text-stone-400">
                   {isSupabaseMode
-                    ? `Logado como ${authUser?.email ?? "usuario autenticado"}.`
+                    ? `Acesso autorizado: ${adminRole}. Logado como ${
+                        authUser?.email ?? "usuario autenticado"
+                      }.`
                     : isSupabaseConfigured
                       ? "Enquanto nao houver login, o painel continua usando o modo local deste navegador."
                       : "Supabase ainda nao configurado. Usando modo local neste navegador."}
@@ -1931,7 +2168,7 @@ export default function AdminPage() {
             {[
               ["overview", "Visao geral"],
               ["sales", "Vendas"],
-              ["perfumes", "Perfumes"],
+              ...(canManagePerfumes ? ([["perfumes", "Perfumes"]] as const) : []),
               ["alerts", "Alertas"],
             ].map(([value, label]) => (
               <button
