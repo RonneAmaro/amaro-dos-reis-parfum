@@ -48,6 +48,10 @@ O primeiro `owner` precisa ser inserido manualmente pelo SQL Editor depois que o
 usuario existir no Supabase Auth. Veja o passo a passo em
 [`docs/admin-access.md`](docs/admin-access.md).
 
+## Favicon e identidade visual
+
+O favicon oficial da marca esta em `public/favicon-amaro.svg`.
+
 ## Deploy na Vercel
 
 1. Crie ou importe o projeto na Vercel pelo GitHub.

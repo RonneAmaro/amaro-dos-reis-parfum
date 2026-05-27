@@ -1001,12 +1001,12 @@ export default function AdminPage() {
 
     if (error) {
       setSalesMessage(
-        "Nao foi possivel carregar as vendas do Supabase. Confira a migration e tente novamente."
+        "Nao foi possivel carregar as vendas. Tente novamente em instantes."
       );
     } else {
       setSalesSource("supabase");
       setSales((data ?? []).map((row) => mapSupabaseSale(row as SupabaseSaleRow)));
-      setSalesMessage("Dados atualizados pelo Supabase.");
+      setSalesMessage("Dados salvos com seguranca no sistema.");
     }
 
     setIsSupabaseLoading(false);
@@ -1094,7 +1094,7 @@ export default function AdminPage() {
     setAuthMessage(
       error
         ? "Nao foi possivel criar o acesso. Confira os dados informados."
-        : "Acesso criado. Se o Supabase pedir confirmacao, verifique o email antes de entrar."
+        : "Acesso criado. Se o sistema pedir confirmacao, verifique o email antes de entrar."
     );
   }
 
@@ -1109,7 +1109,7 @@ export default function AdminPage() {
     setEditingPerfumeId(null);
     await supabase.auth.signOut();
     setAuthUser(null);
-    setSalesMessage("Voce saiu do modo Supabase.");
+    setSalesMessage("Voce saiu do modo online.");
   }
 
   function handleCustomerSubmit(event: FormEvent<HTMLFormElement>) {
@@ -1184,7 +1184,7 @@ export default function AdminPage() {
 
       if (error) {
         setSalesMessage(
-          "Nao foi possivel registrar a venda no Supabase. Tente novamente."
+          "Nao foi possivel registrar a venda no sistema. Tente novamente."
         );
         setIsSupabaseLoading(false);
         return;
@@ -1192,7 +1192,7 @@ export default function AdminPage() {
 
       setForm(initialForm);
       await loadSupabaseSales();
-      setSalesMessage("Venda registrada no Supabase.");
+      setSalesMessage("Venda registrada no sistema.");
       return;
     }
 
@@ -1243,7 +1243,7 @@ export default function AdminPage() {
 
     if (!supabase || !authUser || !canManagePerfumes) {
       setPerfumeMessage(
-        "O cadastro dinamico de perfumes precisa do Supabase ativo."
+        "O cadastro dinamico de perfumes precisa do sistema online ativo."
       );
       return;
     }
@@ -1307,7 +1307,7 @@ export default function AdminPage() {
 
   async function importInitialPerfumes() {
     if (!supabase || !authUser || !canManagePerfumes) {
-      setPerfumeMessage("Entre no modo Supabase para importar o catalogo inicial.");
+      setPerfumeMessage("Entre no modo online para importar o catalogo inicial.");
       return;
     }
 
@@ -1424,7 +1424,7 @@ export default function AdminPage() {
       }
 
       await loadSupabaseSales();
-      setSalesMessage("Venda marcada como paga no Supabase.");
+      setSalesMessage("Venda marcada como paga no sistema.");
       return;
     }
 
@@ -1465,7 +1465,7 @@ export default function AdminPage() {
       }
 
       await loadSupabaseSales();
-      setSalesMessage("Pendencias marcadas como pagas no Supabase.");
+      setSalesMessage("Pendencias marcadas como pagas no sistema.");
       return;
     }
 
@@ -1505,7 +1505,7 @@ export default function AdminPage() {
     }
 
     if (isSupabaseMode && supabase) {
-      const confirmed = window.confirm("Excluir esta venda do Supabase?");
+      const confirmed = window.confirm("Excluir esta venda do sistema?");
 
       if (!confirmed) {
         return;
@@ -1517,13 +1517,13 @@ export default function AdminPage() {
       const { error } = await supabase.from("amaro_sales").delete().eq("id", id);
 
       if (error) {
-        setSalesMessage("Nao foi possivel excluir a venda no Supabase.");
+        setSalesMessage("Nao foi possivel excluir a venda no sistema.");
         setIsSupabaseLoading(false);
         return;
       }
 
       await loadSupabaseSales();
-      setSalesMessage("Venda excluida do Supabase.");
+      setSalesMessage("Venda excluida do sistema.");
       return;
     }
 
@@ -1859,13 +1859,13 @@ export default function AdminPage() {
         <section className="premium-bg border-b border-gold/15 px-6 py-20 sm:px-10 lg:px-12">
           <div className="mx-auto max-w-3xl">
             <p className="text-xs font-semibold uppercase tracking-[0.34em] text-gold">
-              Painel interno
+              Area administrativa
             </p>
             <h1 className="mt-5 text-4xl font-semibold uppercase leading-tight text-white sm:text-6xl">
               Painel indisponivel.
             </h1>
             <p className="mt-6 leading-8 text-stone-300">
-              Configure o Supabase para acessar.
+              Configure o sistema online para acessar.
             </p>
           </div>
         </section>
@@ -1879,7 +1879,7 @@ export default function AdminPage() {
         <section className="premium-bg border-b border-gold/15 px-6 py-20 sm:px-10 lg:px-12">
           <div className="mx-auto max-w-3xl">
             <p className="text-xs font-semibold uppercase tracking-[0.34em] text-gold">
-              Painel interno
+              Area administrativa
             </p>
             <h1 className="mt-5 text-4xl font-semibold uppercase leading-tight text-white">
               Verificando sessao...
@@ -1899,7 +1899,7 @@ export default function AdminPage() {
               Acesso restrito
             </p>
             <h1 className="mt-5 text-4xl font-semibold uppercase leading-tight text-white sm:text-6xl">
-              Painel interno
+              Area administrativa
             </h1>
             <p className="mt-6 leading-8 text-stone-300">
               Entre com um usuario autorizado da Amaro dos Reis Parfum.
@@ -1971,7 +1971,7 @@ export default function AdminPage() {
             {isDevelopment ? (
               <p className="text-xs leading-6 text-stone-500">
                 Criar acesso aparece apenas em desenvolvimento. Em producao, o
-                usuario deve ser criado e autorizado no Supabase.
+                usuario deve ser criado e autorizado no sistema.
               </p>
             ) : null}
           </form>
@@ -1986,7 +1986,7 @@ export default function AdminPage() {
         <section className="premium-bg border-b border-gold/15 px-6 py-20 sm:px-10 lg:px-12">
           <div className="mx-auto max-w-3xl">
             <p className="text-xs font-semibold uppercase tracking-[0.34em] text-gold">
-              Painel interno
+              Area administrativa
             </p>
             <h1 className="mt-5 text-4xl font-semibold uppercase leading-tight text-white">
               Verificando autorizacao...
@@ -2035,11 +2035,11 @@ export default function AdminPage() {
               : "Modo local"}
           </p>
           <h1 className="mt-5 text-4xl font-semibold uppercase leading-tight text-white sm:text-5xl">
-            Painel interno &mdash; Amaro dos Reis Parfum
+            Area administrativa &mdash; Amaro dos Reis Parfum
           </h1>
           <p className="mt-5 max-w-3xl leading-8 text-stone-300">
             {isSupabaseMode
-              ? "Banco Supabase ativo: painel restrito aos administradores autorizados."
+              ? "Sistema online ativo: painel restrito aos administradores autorizados."
               : "Modo local: os dados ficam salvos apenas neste navegador."}
           </p>
         </div>
@@ -2051,23 +2051,21 @@ export default function AdminPage() {
             <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-start">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gold">
-                  {isSupabaseMode ? "Banco Supabase ativo" : "Modo local"}
+                  {isSupabaseMode ? "Sistema online ativo" : "Modo local"}
                 </p>
                 <h2 className="mt-3 text-2xl font-semibold text-white">
                   {isSupabaseMode
-                    ? "Vendas sincronizadas com Supabase"
+                    ? "Controle de vendas e estoque"
                     : isSupabaseConfigured
-                      ? "Entre para usar o banco Supabase"
-                      : "Supabase ainda nao configurado"}
+                      ? "Entre para usar o sistema online"
+                      : "Sistema online ainda nao configurado"}
                 </h2>
                 <p className="mt-3 max-w-3xl text-sm leading-7 text-stone-400">
                   {isSupabaseMode
-                    ? `Acesso autorizado: ${adminRole}. Logado como ${
-                        authUser?.email ?? "usuario autenticado"
-                      }.`
+                    ? `Logado como: ${authUser?.email ?? "usuario autenticado"}.`
                     : isSupabaseConfigured
                       ? "Enquanto nao houver login, o painel continua usando o modo local deste navegador."
-                      : "Supabase ainda nao configurado. Usando modo local neste navegador."}
+                      : "Sistema online ainda nao configurado. Usando controle local apenas neste navegador."}
                 </p>
                 {authMessage ? (
                   <p className="mt-3 text-sm leading-6 text-gold-light">
@@ -3297,7 +3295,7 @@ export default function AdminPage() {
                     Cadastro dinamico de perfumes
                   </h2>
                   <p className="mt-3 text-sm leading-7 text-stone-400">
-                    Futuro: carregar perfumes ativos do Supabase para catalogo publico.
+                    Futuro: publicar automaticamente os perfumes ativos no catalogo publico.
                   </p>
                 </div>
                 {isSupabaseMode ? (
@@ -3324,7 +3322,7 @@ export default function AdminPage() {
 
               {!isSupabaseMode ? (
                 <div className="mt-6 border border-gold/25 bg-gold/10 p-5 text-sm leading-7 text-gold-light">
-                  O cadastro dinamico de perfumes estara disponivel quando o Supabase estiver configurado e voce estiver logado.
+                  O cadastro dinamico de perfumes estara disponivel quando o sistema online estiver configurado e voce estiver logado.
                 </div>
               ) : (
                 <div className="mt-6 grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">

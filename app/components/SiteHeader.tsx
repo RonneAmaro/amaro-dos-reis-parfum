@@ -1,11 +1,10 @@
 import Link from "next/link";
+import Image from "next/image";
 import { createWhatsAppLink } from "@/lib/whatsapp";
 
 const whatsappHref = createWhatsAppLink(
   "Olá! Quero conhecer os perfumes da Amaro dos Reis Parfum."
 );
-
-const showDevAdminLink = process.env.NODE_ENV === "development";
 
 export default function SiteHeader() {
   return (
@@ -13,12 +12,16 @@ export default function SiteHeader() {
       <nav className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-4 text-xs font-semibold uppercase tracking-[0.22em] text-stone-400 sm:flex-row sm:items-center sm:justify-between sm:px-10 lg:px-12">
         <Link
           href="/"
-          className="group inline-flex w-fit flex-col text-gold transition hover:text-gold-light"
+          className="group inline-flex w-fit items-center text-gold transition hover:text-gold-light"
         >
-          <span className="text-sm tracking-[0.3em]">Amaro dos Reis</span>
-          <span className="mt-1 text-[10px] tracking-[0.38em] text-stone-500 transition group-hover:text-gold/80">
-            Parfum
-          </span>
+          <Image
+            src="/logo-amaro-parfum.png"
+            alt="Amaro dos Reis Parfum"
+            width={180}
+            height={64}
+            priority
+            className="h-14 w-auto object-contain"
+          />
         </Link>
 
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
@@ -43,14 +46,6 @@ export default function SiteHeader() {
           <Link href="/contato" className="transition hover:text-gold-light">
             Contato
           </Link>
-          {showDevAdminLink ? (
-            <Link
-              href="/admin"
-              className="text-stone-600 transition hover:text-gold-light"
-            >
-              Painel
-            </Link>
-          ) : null}
           <a
             href={whatsappHref}
             target="_blank"

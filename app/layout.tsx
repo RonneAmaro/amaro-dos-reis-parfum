@@ -15,9 +15,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AMARO DOS REIS PARFUM",
+  title: "Amaro dos Reis Parfum",
   description:
-    "Perfumes autorais premium inspirados em grandes fragrâncias internacionais e orientais.",
+    "Perfumes autorais inspirados em grandes fragrancias internacionais e orientais.",
+  icons: {
+    icon: "/favicon-amaro.png",
+  },
 };
 
 export default function RootLayout({
