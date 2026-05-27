@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import type { User } from "@supabase/supabase-js";
 import {
   DEFAULT_COST_SETTINGS,
   calculateSaleProfit,
@@ -19,6 +20,7 @@ import {
   SALES_STORAGE_KEY,
   STOCK_STORAGE_KEY,
 } from "@/lib/storage-keys";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase-browser";
 
 type StoredPaymentMethod = "dinheiro" | "pix" | "cartao" | "cartão" | "fiado";
 type PaymentMethod = "dinheiro" | "pix" | "cartão" | "fiado";
@@ -107,6 +109,27 @@ type SaleForm = {
   notes: string;
 };
 
+type AuthForm = {
+  email: string;
+  password: string;
+};
+
+type SupabaseSaleRow = {
+  id: string;
+  customer_name: string;
+  perfume_slug: string;
+  perfume_name: string;
+  line_type: "tradicional" | "arabe";
+  unit_price: number | string;
+  cost_price: number | string;
+  quantity: number;
+  payment_method: "dinheiro" | "pix" | "cartao" | "fiado";
+  status: SaleStatus;
+  notes: string | null;
+  created_at: string;
+  paid_at: string | null;
+};
+
 const defaultPerfume = perfumeCommerce[0];
 
 const initialForm: SaleForm = {
@@ -124,6 +147,11 @@ const initialCustomerForm: CustomerForm = {
   name: "",
   phone: "",
   notes: "",
+};
+
+const initialAuthForm: AuthForm = {
+  email: "",
+  password: "",
 };
 
 const paymentLabels: Record<PaymentMethod, string> = {
@@ -150,6 +178,35 @@ function toCostLine(lineType: PerfumeLine | string): LineType {
 
 function normalizePaymentMethod(method: StoredPaymentMethod): PaymentMethod {
   return method === "cartao" ? "cartão" : method;
+}
+
+function toSupabaseLine(lineType: PerfumeLine): "tradicional" | "arabe" {
+  return lineType === "arabic_premium" ? "arabe" : "tradicional";
+}
+
+function fromSupabaseLine(lineType: "tradicional" | "arabe"): PerfumeLine {
+  return lineType === "arabe" ? "arabic_premium" : "traditional";
+}
+
+function toSupabasePaymentMethod(method: PaymentMethod) {
+  return method === "cartão" ? "cartao" : method;
+}
+
+function mapSupabaseSale(row: SupabaseSaleRow): Sale {
+  return {
+    id: row.id,
+    customerName: row.customer_name,
+    perfumeSlug: row.perfume_slug,
+    perfumeName: row.perfume_name,
+    lineType: fromSupabaseLine(row.line_type),
+    unitPrice: Number(row.unit_price) || 0,
+    quantity: Math.max(1, Number(row.quantity) || 1),
+    paymentMethod: row.payment_method,
+    status: row.status,
+    notes: row.notes ?? "",
+    createdAt: row.created_at,
+    paidAt: row.paid_at ?? undefined,
+  };
 }
 
 function saleProfit(sale: {
@@ -238,6 +295,21 @@ function stockStatus(item: StockItem) {
   return "Em estoque";
 }
 
+function readLocalSales() {
+  const storedSales = window.localStorage.getItem(SALES_STORAGE_KEY);
+
+  if (!storedSales) {
+    return [];
+  }
+
+  try {
+    const parsedSales = JSON.parse(storedSales) as Sale[];
+    return Array.isArray(parsedSales) ? parsedSales : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function AdminPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [form, setForm] = useState<SaleForm>(initialForm);
@@ -258,31 +330,26 @@ export default function AdminPage() {
   const [isStorageLoaded, setIsStorageLoaded] = useState(false);
   const [isStockLoaded, setIsStockLoaded] = useState(false);
   const [isCustomersLoaded, setIsCustomersLoaded] = useState(false);
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [authForm, setAuthForm] = useState<AuthForm>(initialAuthForm);
+  const [authMessage, setAuthMessage] = useState("");
+  const [salesMessage, setSalesMessage] = useState("");
+  const [isAuthLoading, setIsAuthLoading] = useState(isSupabaseConfigured);
+  const [isSupabaseLoading, setIsSupabaseLoading] = useState(false);
+  const [salesSource, setSalesSource] = useState<"local" | "supabase">("local");
   const unitPrice = getLinePrice(form.lineType);
+  const isSupabaseMode = isSupabaseConfigured && Boolean(authUser);
 
   useEffect(() => {
-    const storedSales = window.localStorage.getItem(SALES_STORAGE_KEY);
-
-    if (!storedSales) {
-      setIsStorageLoaded(true);
-      return;
-    }
-
-    try {
-      const parsedSales = JSON.parse(storedSales) as Sale[];
-      setSales(Array.isArray(parsedSales) ? parsedSales : []);
-    } catch {
-      setSales([]);
-    } finally {
-      setIsStorageLoaded(true);
-    }
+    setSales(readLocalSales());
+    setIsStorageLoaded(true);
   }, []);
 
   useEffect(() => {
-    if (isStorageLoaded) {
+    if (isStorageLoaded && salesSource === "local") {
       window.localStorage.setItem(SALES_STORAGE_KEY, JSON.stringify(sales));
     }
-  }, [isStorageLoaded, sales]);
+  }, [isStorageLoaded, sales, salesSource]);
 
   useEffect(() => {
     const storedStock = window.localStorage.getItem(STOCK_STORAGE_KEY);
@@ -352,6 +419,40 @@ export default function AdminPage() {
       setBackupInfo(null);
     }
   }, []);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) {
+      setIsAuthLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    supabase.auth.getUser().then(({ data }) => {
+      if (isMounted) {
+        setAuthUser(data.user);
+        setIsAuthLoading(false);
+      }
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthUser(session?.user ?? null);
+      setAuthMessage("");
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isSupabaseMode) {
+      loadSupabaseSales();
+    }
+  }, [isSupabaseMode]);
 
   const filteredSales = useMemo(() => {
     return sales.filter((sale) => {
@@ -608,6 +709,34 @@ export default function AdminPage() {
     return "Disponivel em estoque.";
   }, [selectedStock]);
 
+  async function loadSupabaseSales() {
+    if (!supabase || !authUser) {
+      return;
+    }
+
+    setIsSupabaseLoading(true);
+    setSalesMessage("");
+
+    const { data, error } = await supabase
+      .from("amaro_sales")
+      .select(
+        "id, customer_name, perfume_slug, perfume_name, line_type, unit_price, cost_price, quantity, payment_method, status, notes, created_at, paid_at"
+      )
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      setSalesMessage(
+        "Nao foi possivel carregar as vendas do Supabase. Confira a migration e tente novamente."
+      );
+    } else {
+      setSalesSource("supabase");
+      setSales((data ?? []).map((row) => mapSupabaseSale(row as SupabaseSaleRow)));
+      setSalesMessage("Dados atualizados pelo Supabase.");
+    }
+
+    setIsSupabaseLoading(false);
+  }
+
   function handlePerfumeChange(nextSlug: string) {
     const perfume = perfumeCommerce.find((item) => perfumeSlug(item) === nextSlug);
 
@@ -626,6 +755,60 @@ export default function AdminPage() {
       customerId,
       customerName: customer?.name ?? current.customerName,
     }));
+  }
+
+  async function handleSignIn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!supabase) {
+      return;
+    }
+
+    setIsAuthLoading(true);
+    setAuthMessage("");
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: authForm.email.trim(),
+      password: authForm.password,
+    });
+
+    setIsAuthLoading(false);
+    setAuthMessage(
+      error ? "Nao foi possivel entrar. Confira email e senha." : "Login realizado."
+    );
+  }
+
+  async function handleSignUp() {
+    if (!supabase) {
+      return;
+    }
+
+    setIsAuthLoading(true);
+    setAuthMessage("");
+
+    const { error } = await supabase.auth.signUp({
+      email: authForm.email.trim(),
+      password: authForm.password,
+    });
+
+    setIsAuthLoading(false);
+    setAuthMessage(
+      error
+        ? "Nao foi possivel criar o acesso. Confira os dados informados."
+        : "Acesso criado. Se o Supabase pedir confirmacao, verifique o email antes de entrar."
+    );
+  }
+
+  async function handleSignOut() {
+    if (!supabase) {
+      return;
+    }
+
+    setSalesSource("local");
+    setSales(readLocalSales());
+    await supabase.auth.signOut();
+    setAuthUser(null);
+    setSalesMessage("Voce saiu do modo Supabase.");
   }
 
   function handleCustomerSubmit(event: FormEvent<HTMLFormElement>) {
@@ -661,7 +844,7 @@ export default function AdminPage() {
     setCustomerMessage("Cliente salvo localmente.");
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const perfume = perfumeCommerce.find(
@@ -669,6 +852,44 @@ export default function AdminPage() {
     );
 
     if (!perfume || !form.customerName.trim()) {
+      return;
+    }
+
+    if (isSupabaseMode && supabase && authUser) {
+      setIsSupabaseLoading(true);
+      setSalesMessage("");
+
+      const quantity = Math.max(1, Number(form.quantity) || 1);
+      const paidAt = form.status === "pago" ? new Date().toISOString() : null;
+      const { error } = await supabase.from("amaro_sales").insert({
+        owner_id: authUser.id,
+        customer_name: form.customerName.trim(),
+        perfume_slug: form.perfumeSlug,
+        perfume_name: perfume.name,
+        line_type: toSupabaseLine(form.lineType),
+        unit_price: unitPrice,
+        cost_price: getEstimatedUnitCost(
+          toCostLine(form.lineType),
+          DEFAULT_COST_SETTINGS
+        ),
+        quantity,
+        payment_method: toSupabasePaymentMethod(form.paymentMethod),
+        status: form.status,
+        notes: form.notes.trim() || null,
+        paid_at: paidAt,
+      });
+
+      if (error) {
+        setSalesMessage(
+          "Nao foi possivel registrar a venda no Supabase. Tente novamente."
+        );
+        setIsSupabaseLoading(false);
+        return;
+      }
+
+      setForm(initialForm);
+      await loadSupabaseSales();
+      setSalesMessage("Venda registrada no Supabase.");
       return;
     }
 
@@ -712,7 +933,27 @@ export default function AdminPage() {
     setForm(initialForm);
   }
 
-  function markAsPaid(id: string) {
+  async function markAsPaid(id: string) {
+    if (isSupabaseMode && supabase) {
+      setIsSupabaseLoading(true);
+      setSalesMessage("");
+
+      const { error } = await supabase
+        .from("amaro_sales")
+        .update({ status: "pago", paid_at: new Date().toISOString() })
+        .eq("id", id);
+
+      if (error) {
+        setSalesMessage("Nao foi possivel marcar a venda como paga.");
+        setIsSupabaseLoading(false);
+        return;
+      }
+
+      await loadSupabaseSales();
+      setSalesMessage("Venda marcada como paga no Supabase.");
+      return;
+    }
+
     setSales((current) =>
       current.map((sale) =>
         sale.id === id
@@ -722,7 +963,7 @@ export default function AdminPage() {
     );
   }
 
-  function markCustomerPendingAsPaid(customerName: string) {
+  async function markCustomerPendingAsPaid(customerName: string) {
     const confirmed = window.confirm(
       "Marcar todas as pendencias deste cliente como pagas?"
     );
@@ -732,6 +973,27 @@ export default function AdminPage() {
     }
 
     const key = normalizeName(customerName);
+
+    if (isSupabaseMode && supabase) {
+      setIsSupabaseLoading(true);
+      setSalesMessage("");
+
+      const { error } = await supabase
+        .from("amaro_sales")
+        .update({ status: "pago", paid_at: new Date().toISOString() })
+        .eq("customer_name", customerName)
+        .eq("status", "pendente");
+
+      if (error) {
+        setSalesMessage("Nao foi possivel marcar as pendencias como pagas.");
+        setIsSupabaseLoading(false);
+        return;
+      }
+
+      await loadSupabaseSales();
+      setSalesMessage("Pendencias marcadas como pagas no Supabase.");
+      return;
+    }
 
     setSales((current) =>
       current.map((sale) =>
@@ -761,10 +1023,33 @@ export default function AdminPage() {
     }
   }
 
-  function deleteSale(id: string) {
+  async function deleteSale(id: string) {
     const sale = sales.find((item) => item.id === id);
 
     if (!sale) {
+      return;
+    }
+
+    if (isSupabaseMode && supabase) {
+      const confirmed = window.confirm("Excluir esta venda do Supabase?");
+
+      if (!confirmed) {
+        return;
+      }
+
+      setIsSupabaseLoading(true);
+      setSalesMessage("");
+
+      const { error } = await supabase.from("amaro_sales").delete().eq("id", id);
+
+      if (error) {
+        setSalesMessage("Nao foi possivel excluir a venda no Supabase.");
+        setIsSupabaseLoading(false);
+        return;
+      }
+
+      await loadSupabaseSales();
+      setSalesMessage("Venda excluida do Supabase.");
       return;
     }
 
@@ -1095,20 +1380,136 @@ export default function AdminPage() {
       <section className="premium-bg border-b border-gold/15 px-6 py-12 sm:px-10 lg:px-12">
         <div className="mx-auto max-w-7xl">
           <p className="text-xs font-semibold uppercase tracking-[0.34em] text-gold">
-            Controle local
+            {isSupabaseMode ? "Modo Supabase" : "Modo local"}
           </p>
           <h1 className="mt-5 text-4xl font-semibold uppercase leading-tight text-white sm:text-5xl">
             Painel interno &mdash; Amaro dos Reis Parfum
           </h1>
           <p className="mt-5 max-w-3xl leading-8 text-stone-300">
-            Versao local: os dados ficam salvos apenas neste navegador.
-            Futuramente sera integrado ao Supabase.
+            {isSupabaseMode
+              ? "Banco Supabase ativo: vendas carregadas com login e protegidas por usuario."
+              : "Modo local: os dados ficam salvos apenas neste navegador."}
           </p>
         </div>
       </section>
 
       <section className="px-6 py-10 sm:px-10 lg:px-12">
         <div className="mx-auto max-w-7xl">
+          <section className="mb-8 premium-surface p-6">
+            <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-start">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gold">
+                  {isSupabaseMode ? "Banco Supabase ativo" : "Modo local"}
+                </p>
+                <h2 className="mt-3 text-2xl font-semibold text-white">
+                  {isSupabaseMode
+                    ? "Vendas sincronizadas com Supabase"
+                    : isSupabaseConfigured
+                      ? "Entre para usar o banco Supabase"
+                      : "Supabase ainda nao configurado"}
+                </h2>
+                <p className="mt-3 max-w-3xl text-sm leading-7 text-stone-400">
+                  {isSupabaseMode
+                    ? `Logado como ${authUser?.email ?? "usuario autenticado"}.`
+                    : isSupabaseConfigured
+                      ? "Enquanto nao houver login, o painel continua usando o modo local deste navegador."
+                      : "Supabase ainda nao configurado. Usando modo local neste navegador."}
+                </p>
+                {authMessage ? (
+                  <p className="mt-3 text-sm leading-6 text-gold-light">
+                    {authMessage}
+                  </p>
+                ) : null}
+                {salesMessage ? (
+                  <p className="mt-3 text-sm leading-6 text-gold-light">
+                    {salesMessage}
+                  </p>
+                ) : null}
+              </div>
+
+              {isSupabaseConfigured ? (
+                authUser ? (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={loadSupabaseSales}
+                      disabled={isSupabaseLoading}
+                      className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isSupabaseLoading ? "Atualizando..." : "Atualizar dados"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSignOut}
+                      className="min-h-10 rounded-full border border-white/15 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-stone-300 transition hover:border-gold/50 hover:text-gold-light"
+                    >
+                      Sair
+                    </button>
+                  </div>
+                ) : (
+                  <form
+                    onSubmit={handleSignIn}
+                    className="grid w-full gap-3 lg:max-w-xl"
+                  >
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label>
+                        <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                          Email
+                        </span>
+                        <input
+                          type="email"
+                          required
+                          value={authForm.email}
+                          onChange={(event) =>
+                            setAuthForm((current) => ({
+                              ...current,
+                              email: event.target.value,
+                            }))
+                          }
+                          className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
+                        />
+                      </label>
+                      <label>
+                        <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                          Senha
+                        </span>
+                        <input
+                          type="password"
+                          required
+                          value={authForm.password}
+                          onChange={(event) =>
+                            setAuthForm((current) => ({
+                              ...current,
+                              password: event.target.value,
+                            }))
+                          }
+                          className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
+                        />
+                      </label>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="submit"
+                        disabled={isAuthLoading}
+                        className="min-h-10 rounded-full bg-gold px-5 text-xs font-semibold uppercase tracking-[0.16em] text-black transition hover:bg-gold-light disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Entrar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSignUp}
+                        disabled={isAuthLoading}
+                        className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Criar acesso
+                      </button>
+                    </div>
+                  </form>
+                )
+              ) : null}
+            </div>
+          </section>
+
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {summaryCards.map(([label, value]) => (
               <article key={label} className="premium-surface p-5">

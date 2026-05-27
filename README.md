@@ -22,6 +22,12 @@ NEXT_PUBLIC_WHATSAPP_NUMBER=5599999999999
 Nao commitar `.env.local`. Esse arquivo pode conter configuracoes locais e deve
 ficar fora do repositorio.
 
+## Supabase
+
+O painel interno pode usar Supabase para autenticar o acesso e salvar vendas,
+clientes e estoque por usuario. A configuracao completa esta em
+[`docs/supabase-setup.md`](docs/supabase-setup.md).
+
 ## Deploy na Vercel
 
 1. Crie ou importe o projeto na Vercel pelo GitHub.
