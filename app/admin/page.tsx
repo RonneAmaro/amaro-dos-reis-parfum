@@ -3,8 +3,8 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import {
+  calculateCardFee,
   DEFAULT_COST_SETTINGS,
-  calculateSaleProfit,
   getEstimatedUnitCost,
   type LineType,
 } from "@/lib/costs";
@@ -52,6 +52,7 @@ export type Sale = {
   perfumeName: string;
   lineType: PerfumeLine;
   unitPrice: number;
+  costPrice?: number;
   quantity: number;
   paymentMethod: StoredPaymentMethod;
   status: SaleStatus;
@@ -288,6 +289,7 @@ function mapSupabaseSale(row: SupabaseSaleRow): Sale {
     perfumeName: row.perfume_name,
     lineType: fromSupabaseLine(row.line_type),
     unitPrice: Number(row.unit_price) || 0,
+    costPrice: Number(row.cost_price) || 0,
     quantity: Math.max(1, Number(row.quantity) || 1),
     paymentMethod: row.payment_method,
     status: row.status,
@@ -325,18 +327,37 @@ function mapPerfumeToForm(perfume: SupabasePerfumeRow): PerfumeForm {
 function saleProfit(sale: {
   lineType: PerfumeLine | string;
   unitPrice: number;
+  costPrice?: number;
   quantity: number;
   paymentMethod: StoredPaymentMethod;
 }) {
-  return calculateSaleProfit(
-    {
-      lineType: toCostLine(sale.lineType),
-      unitPrice: Number(sale.unitPrice) || 0,
-      quantity: Math.max(1, Number(sale.quantity) || 1),
-      paymentMethod: normalizePaymentMethod(sale.paymentMethod),
-    },
+  const unitPrice = Number(sale.unitPrice) || 0;
+  const quantity = Math.max(1, Number(sale.quantity) || 1);
+  const rawUnitCost = Number(sale.costPrice);
+  const unitCost =
+    sale.costPrice === undefined || !Number.isFinite(rawUnitCost)
+      ? getEstimatedUnitCost(toCostLine(sale.lineType), DEFAULT_COST_SETTINGS)
+      : Math.max(0, rawUnitCost);
+  const revenue = unitPrice * quantity;
+  const estimatedCost = unitCost * quantity;
+  const cardFee = calculateCardFee(
+    revenue,
+    normalizePaymentMethod(sale.paymentMethod),
     DEFAULT_COST_SETTINGS
   );
+  const grossProfit = revenue - estimatedCost;
+  const netProfit = grossProfit - cardFee;
+  const marginPercent = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
+
+  return {
+    revenue,
+    unitCost,
+    estimatedCost,
+    cardFee,
+    grossProfit,
+    netProfit,
+    marginPercent,
+  };
 }
 
 function formatCurrency(value: number) {
@@ -465,6 +486,34 @@ function stockStatus(item: StockItem) {
   return "Em estoque";
 }
 
+function perfumeStockStatus(quantity: number) {
+  if (quantity <= 0) {
+    return "Sem estoque";
+  }
+
+  if (quantity <= 3) {
+    return "Baixo estoque";
+  }
+
+  return "Estoque ok";
+}
+
+function stockStatusClass(status: string) {
+  if (status === "Estoque ok" || status === "Em estoque") {
+    return "border-emerald-400/30 bg-emerald-400/10 text-emerald-300";
+  }
+
+  if (status === "Baixo estoque" || status === "Poucas unidades") {
+    return "border-gold/35 bg-gold/10 text-gold-light";
+  }
+
+  return "border-red-400/30 bg-red-400/10 text-red-300";
+}
+
+function bottleTypeLabel(type: BottleType) {
+  return type === "arabe" ? "Arabe Premium" : "Tradicional";
+}
+
 function readLocalSales() {
   const storedSales = window.localStorage.getItem(SALES_STORAGE_KEY);
 
@@ -516,7 +565,6 @@ export default function AdminPage() {
   const [editingPerfumeId, setEditingPerfumeId] = useState<string | null>(null);
   const [perfumeMessage, setPerfumeMessage] = useState("");
   const [isPerfumeLoading, setIsPerfumeLoading] = useState(false);
-  const unitPrice = getLinePrice(form.lineType);
   const isDevelopment = process.env.NODE_ENV === "development";
   const isAuthorizedAdmin = Boolean(adminRole);
   const isSupabaseMode =
@@ -528,6 +576,41 @@ export default function AdminPage() {
     adminRole === "owner" ||
     adminRole === "admin" ||
     adminRole === "seller";
+  const salePerfumeOptions = useMemo(() => {
+    if (isSupabaseMode && supabasePerfumes.length > 0) {
+      return supabasePerfumes
+        .filter((perfume) => perfume.is_active)
+        .map((perfume) => ({
+          slug: perfume.slug,
+          name: perfume.name,
+          lineType: fromSupabaseLine(perfume.bottle_type),
+          unitPrice: Number(perfume.price) || 0,
+          costPrice: Number(perfume.cost_price) || 0,
+          stockQuantity: Number(perfume.stock_quantity) || 0,
+          collection: perfume.collection,
+        }));
+    }
+
+    return perfumeCommerce.map((perfume) => ({
+      slug: perfumeSlug(perfume),
+      name: perfume.name,
+      lineType: perfume.line,
+      unitPrice: getLinePrice(perfume.line),
+      costPrice: getEstimatedUnitCost(toCostLine(perfume.line), DEFAULT_COST_SETTINGS),
+      stockQuantity: stock[perfumeSlug(perfume)]?.quantity ?? 0,
+      collection: perfume.collection,
+    }));
+  }, [isSupabaseMode, stock, supabasePerfumes]);
+  const selectedSalePerfume = useMemo(
+    () =>
+      salePerfumeOptions.find((perfume) => perfume.slug === form.perfumeSlug) ??
+      salePerfumeOptions[0],
+    [form.perfumeSlug, salePerfumeOptions]
+  );
+  const unitPrice = selectedSalePerfume?.unitPrice ?? getLinePrice(form.lineType);
+  const unitCost =
+    selectedSalePerfume?.costPrice ??
+    getEstimatedUnitCost(toCostLine(form.lineType), DEFAULT_COST_SETTINGS);
 
   useEffect(() => {
     setSales(readLocalSales());
@@ -687,6 +770,21 @@ export default function AdminPage() {
     }
   }, [activeTab, canManagePerfumes]);
 
+  useEffect(() => {
+    if (
+      salePerfumeOptions.length > 0 &&
+      !salePerfumeOptions.some((perfume) => perfume.slug === form.perfumeSlug)
+    ) {
+      const firstPerfume = salePerfumeOptions[0];
+
+      setForm((current) => ({
+        ...current,
+        perfumeSlug: firstPerfume.slug,
+        lineType: firstPerfume.lineType,
+      }));
+    }
+  }, [form.perfumeSlug, salePerfumeOptions]);
+
   const filteredSales = useMemo(() => {
     return sales.filter((sale) => {
       const paymentMethod = normalizePaymentMethod(sale.paymentMethod);
@@ -709,9 +807,13 @@ export default function AdminPage() {
         acc.revenue += profit.revenue;
         acc.estimatedCost += profit.estimatedCost;
         acc.cardFees += profit.cardFee;
-        acc.netProfit += profit.netProfit;
+        acc.grossProfit += profit.grossProfit;
         acc.salesCount += 1;
         acc.itemsCount += Math.max(1, Number(sale.quantity) || 1);
+
+        if (sale.costPrice === 0) {
+          acc.hasZeroCost = true;
+        }
 
         if (sale.status === "pago") {
           acc.totalReceived += profit.revenue;
@@ -727,16 +829,17 @@ export default function AdminPage() {
         totalPending: 0,
         estimatedCost: 0,
         cardFees: 0,
-        netProfit: 0,
+        grossProfit: 0,
         salesCount: 0,
         itemsCount: 0,
+        hasZeroCost: false,
       }
     );
 
     return {
       ...totals,
       averageMargin:
-        totals.revenue > 0 ? (totals.netProfit / totals.revenue) * 100 : 0,
+        totals.revenue > 0 ? (totals.grossProfit / totals.revenue) * 100 : 0,
     };
   }, [sales]);
 
@@ -775,7 +878,51 @@ export default function AdminPage() {
     });
   }, [stockFilter, stockRows]);
 
+  const onlinePerfumeRows = useMemo(() => {
+    return supabasePerfumes.map((perfume) => {
+      const price = Number(perfume.price) || 0;
+      const cost = Number(perfume.cost_price) || 0;
+      const unitProfit = price - cost;
+      const margin = price > 0 ? (unitProfit / price) * 100 : 0;
+      const stockQuantity = Number(perfume.stock_quantity) || 0;
+
+      return {
+        perfume,
+        price,
+        cost,
+        unitProfit,
+        margin,
+        stockQuantity,
+        status: perfumeStockStatus(stockQuantity),
+      };
+    });
+  }, [supabasePerfumes]);
+
   const stockSummary = useMemo(() => {
+    if (isSupabaseMode && onlinePerfumeRows.length > 0) {
+      return onlinePerfumeRows.reduce(
+        (acc, row) => {
+          acc.totalUnits += row.stockQuantity;
+
+          if (row.status === "Baixo estoque") {
+            acc.lowItems += 1;
+          }
+
+          if (row.status === "Sem estoque") {
+            acc.emptyItems += 1;
+          }
+
+          return acc;
+        },
+        {
+          differentPerfumes: onlinePerfumeRows.length,
+          totalUnits: 0,
+          lowItems: 0,
+          emptyItems: 0,
+        }
+      );
+    }
+
     return stockRows.reduce(
       (acc, row) => {
         acc.totalUnits += row.item.quantity;
@@ -797,7 +944,23 @@ export default function AdminPage() {
         emptyItems: 0,
       }
     );
-  }, [stockRows]);
+  }, [isSupabaseMode, onlinePerfumeRows, stockRows]);
+
+  const replenishmentRows = useMemo(() => {
+    if (isSupabaseMode) {
+      return onlinePerfumeRows.filter((row) => row.status !== "Estoque ok");
+    }
+
+    return stockRows.filter((row) => row.status !== "Em estoque");
+  }, [isSupabaseMode, onlinePerfumeRows, stockRows]);
+
+  const hasMissingCost = useMemo(() => {
+    return (
+      summary.hasZeroCost ||
+      (isSupabaseMode &&
+        supabasePerfumes.some((perfume) => Number(perfume.cost_price) <= 0))
+    );
+  }, [isSupabaseMode, summary.hasZeroCost, supabasePerfumes]);
 
   const customerSummaries = useMemo(() => {
     const customerMap = new Map<
@@ -914,16 +1077,14 @@ export default function AdminPage() {
 
   const preview = useMemo(
     () =>
-      calculateSaleProfit(
-        {
-          lineType: toCostLine(form.lineType),
-          unitPrice,
-          quantity: Math.max(1, Number(form.quantity) || 1),
-          paymentMethod: form.paymentMethod,
-        },
-        DEFAULT_COST_SETTINGS
-      ),
-    [form.lineType, form.paymentMethod, form.quantity, unitPrice]
+      saleProfit({
+        lineType: form.lineType,
+        unitPrice,
+        costPrice: unitCost,
+        quantity: Math.max(1, Number(form.quantity) || 1),
+        paymentMethod: form.paymentMethod,
+      }),
+    [form.lineType, form.paymentMethod, form.quantity, unitCost, unitPrice]
   );
 
   const pendingSales = useMemo(
@@ -969,12 +1130,25 @@ export default function AdminPage() {
   const needsDueDate = form.paymentMethod === "fiado" || form.status === "pendente";
 
   const selectedStock = useMemo(() => {
+    if (isSupabaseMode && selectedSalePerfume) {
+      return {
+        perfumeSlug: selectedSalePerfume.slug,
+        quantity: selectedSalePerfume.stockQuantity,
+        minQuantity: 3,
+        updatedAt: "",
+      };
+    }
+
     return stock[form.perfumeSlug] ?? defaultStockItem(form.perfumeSlug);
-  }, [form.perfumeSlug, stock]);
+  }, [form.perfumeSlug, isSupabaseMode, selectedSalePerfume, stock]);
 
   const selectedStockMessage = useMemo(() => {
+    if (!isSupabaseMode) {
+      return "Baixa automatica de estoque disponivel no modo online.";
+    }
+
     if (selectedStock.quantity <= 0) {
-      return "Sem estoque registrado. Voce ainda pode lancar como encomenda.";
+      return "Sem estoque disponivel para venda.";
     }
 
     if (selectedStock.quantity <= selectedStock.minQuantity) {
@@ -1037,12 +1211,12 @@ export default function AdminPage() {
   }
 
   function handlePerfumeChange(nextSlug: string) {
-    const perfume = perfumeCommerce.find((item) => perfumeSlug(item) === nextSlug);
+    const perfume = salePerfumeOptions.find((item) => item.slug === nextSlug);
 
     setForm((current) => ({
       ...current,
       perfumeSlug: nextSlug,
-      lineType: perfume?.line ?? current.lineType,
+      lineType: perfume?.lineType ?? current.lineType,
     }));
   }
 
@@ -1148,31 +1322,74 @@ export default function AdminPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const perfume = perfumeCommerce.find(
-      (item) => perfumeSlug(item) === form.perfumeSlug
-    );
+    const perfume = selectedSalePerfume;
 
     if (!perfume || !form.customerName.trim()) {
       return;
     }
 
+    const quantity = Math.max(1, Number(form.quantity) || 1);
+
     if (isSupabaseMode && supabase && authUser) {
       setIsSupabaseLoading(true);
       setSalesMessage("");
 
-      const quantity = Math.max(1, Number(form.quantity) || 1);
+      const { data: stockPerfume, error: stockError } = await supabase
+        .from("amaro_perfumes")
+        .select("id, slug, name, bottle_type, price, cost_price, stock_quantity")
+        .eq("owner_id", authUser.id)
+        .eq("slug", form.perfumeSlug)
+        .maybeSingle();
+
+      if (stockError || !stockPerfume) {
+        setSalesMessage(
+          "Perfume nao encontrado no controle de estoque. Ajuste o cadastro antes de vender."
+        );
+        setIsSupabaseLoading(false);
+        return;
+      }
+
+      const perfumeRow = stockPerfume as Pick<
+        SupabasePerfumeRow,
+        "id" | "slug" | "name" | "bottle_type" | "price" | "cost_price" | "stock_quantity"
+      >;
+      const currentStock = Number(perfumeRow.stock_quantity) || 0;
+
+      if (currentStock < quantity) {
+        setSalesMessage(
+          "Estoque insuficiente para esta venda. Ajuste o estoque do perfume antes de vender."
+        );
+        setIsSupabaseLoading(false);
+        return;
+      }
+
+      const nextStock = currentStock - quantity;
+      const { data: updatedStock, error: stockUpdateError } = await supabase
+        .from("amaro_perfumes")
+        .update({ stock_quantity: nextStock })
+        .eq("id", perfumeRow.id)
+        .eq("owner_id", authUser.id)
+        .eq("stock_quantity", currentStock)
+        .select("id")
+        .maybeSingle();
+
+      if (stockUpdateError || !updatedStock) {
+        setSalesMessage(
+          "Estoque insuficiente para esta venda. Ajuste o estoque do perfume antes de vender."
+        );
+        setIsSupabaseLoading(false);
+        return;
+      }
+
       const paidAt = form.status === "pago" ? new Date().toISOString() : null;
       const { error } = await supabase.from("amaro_sales").insert({
         owner_id: authUser.id,
         customer_name: form.customerName.trim(),
         perfume_slug: form.perfumeSlug,
-        perfume_name: perfume.name,
-        line_type: toSupabaseLine(form.lineType),
-        unit_price: unitPrice,
-        cost_price: getEstimatedUnitCost(
-          toCostLine(form.lineType),
-          DEFAULT_COST_SETTINGS
-        ),
+        perfume_name: perfumeRow.name,
+        line_type: perfumeRow.bottle_type,
+        unit_price: Number(perfumeRow.price) || 0,
+        cost_price: Number(perfumeRow.cost_price) || 0,
         quantity,
         payment_method: toSupabasePaymentMethod(form.paymentMethod),
         status: form.status,
@@ -1183,6 +1400,11 @@ export default function AdminPage() {
       });
 
       if (error) {
+        await supabase
+          .from("amaro_perfumes")
+          .update({ stock_quantity: currentStock })
+          .eq("id", perfumeRow.id)
+          .eq("owner_id", authUser.id);
         setSalesMessage(
           "Nao foi possivel registrar a venda no sistema. Tente novamente."
         );
@@ -1192,6 +1414,7 @@ export default function AdminPage() {
 
       setForm(initialForm);
       await loadSupabaseSales();
+      await loadSupabasePerfumes();
       setSalesMessage("Venda registrada no sistema.");
       return;
     }
@@ -1201,8 +1424,9 @@ export default function AdminPage() {
       customerName: form.customerName.trim(),
       perfumeSlug: form.perfumeSlug,
       perfumeName: perfume.name,
-      lineType: form.lineType,
+      lineType: perfume.lineType,
       unitPrice,
+      costPrice: unitCost,
       quantity: Math.max(1, Number(form.quantity) || 1),
       paymentMethod: form.paymentMethod,
       status: form.status,
@@ -1214,27 +1438,7 @@ export default function AdminPage() {
     };
 
     setSales((current) => [sale, ...current]);
-    setStock((current) => {
-      const item = current[sale.perfumeSlug] ?? defaultStockItem(sale.perfumeSlug);
-      const nextQuantity = Math.max(0, item.quantity - sale.quantity);
-
-      if (sale.quantity > item.quantity) {
-        setStockWarning(
-          "Venda registrada, mas o estoque ficou zerado. Confira se foi encomenda ou estoque manual."
-        );
-      } else {
-        setStockWarning("");
-      }
-
-      return {
-        ...current,
-        [sale.perfumeSlug]: {
-          ...item,
-          quantity: nextQuantity,
-          updatedAt: new Date().toISOString(),
-        },
-      };
-    });
+    setStockWarning("Baixa automatica de estoque disponivel no modo online.");
     setForm(initialForm);
   }
 
@@ -1408,7 +1612,7 @@ export default function AdminPage() {
   }
 
   async function markAsPaid(id: string) {
-    if (isSupabaseMode && supabase) {
+    if (isSupabaseMode && supabase && authUser) {
       setIsSupabaseLoading(true);
       setSalesMessage("");
 
@@ -1448,7 +1652,7 @@ export default function AdminPage() {
 
     const key = normalizeName(customerName);
 
-    if (isSupabaseMode && supabase) {
+    if (isSupabaseMode && supabase && authUser) {
       setIsSupabaseLoading(true);
       setSalesMessage("");
 
@@ -1504,7 +1708,7 @@ export default function AdminPage() {
       return;
     }
 
-    if (isSupabaseMode && supabase) {
+    if (isSupabaseMode && supabase && authUser) {
       const confirmed = window.confirm("Excluir esta venda do sistema?");
 
       if (!confirmed) {
@@ -1515,6 +1719,7 @@ export default function AdminPage() {
       setSalesMessage("");
 
       const { error } = await supabase.from("amaro_sales").delete().eq("id", id);
+      let restoreMessage = "";
 
       if (error) {
         setSalesMessage("Nao foi possivel excluir a venda no sistema.");
@@ -1522,8 +1727,36 @@ export default function AdminPage() {
         return;
       }
 
+      const { data: perfumeRow, error: perfumeError } = await supabase
+        .from("amaro_perfumes")
+        .select("id, stock_quantity")
+        .eq("owner_id", authUser.id)
+        .eq("slug", sale.perfumeSlug)
+        .maybeSingle();
+
+      if (!perfumeError && perfumeRow) {
+        const row = perfumeRow as Pick<SupabasePerfumeRow, "id" | "stock_quantity">;
+        const { error: restoreError } = await supabase
+          .from("amaro_perfumes")
+          .update({
+            stock_quantity:
+              (Number(row.stock_quantity) || 0) +
+              Math.max(1, Number(sale.quantity) || 1),
+          })
+          .eq("id", row.id);
+
+        if (restoreError) {
+          restoreMessage =
+            " A venda foi excluida, mas nao foi possivel devolver o estoque automaticamente.";
+        }
+      } else if (perfumeError) {
+        restoreMessage =
+          " A venda foi excluida, mas nao foi possivel conferir o estoque automaticamente.";
+      }
+
       await loadSupabaseSales();
-      setSalesMessage("Venda excluida do sistema.");
+      await loadSupabasePerfumes();
+      setSalesMessage(`Venda excluida do sistema.${restoreMessage}`);
       return;
     }
 
@@ -1601,15 +1834,16 @@ export default function AdminPage() {
       "preco_unitario",
       "quantidade",
       "total",
+      "custo_unitario",
+      "custo_total",
+      "lucro_estimado",
       "forma_pagamento",
       "status",
       "telefone_cliente",
       "vencimento",
       "data",
       "observacao",
-      "custo_estimado",
       "taxa_cartao",
-      "lucro_estimado",
       "margem_percentual",
     ];
 
@@ -1624,15 +1858,16 @@ export default function AdminPage() {
         sale.unitPrice,
         sale.quantity,
         profit.revenue,
+        profit.unitCost.toFixed(2),
+        profit.estimatedCost.toFixed(2),
+        profit.grossProfit.toFixed(2),
         paymentLabels[paymentMethod],
         statusLabels[sale.status],
         sale.customerPhone ?? "",
         sale.dueDate ? formatDateOnly(sale.dueDate) : "",
         formatDate(sale.createdAt),
         sale.notes,
-        profit.estimatedCost.toFixed(2),
         profit.cardFee.toFixed(2),
-        profit.netProfit.toFixed(2),
         profit.marginPercent.toFixed(2),
       ];
     });
@@ -1839,14 +2074,14 @@ export default function AdminPage() {
     ["Total recebido", formatCurrency(summary.totalReceived)],
     ["Total pendente", formatCurrency(summary.totalPending)],
     ["Custo estimado", formatCurrency(summary.estimatedCost)],
-    ["Lucro liquido estimado", formatCurrency(summary.netProfit)],
+    ["Lucro bruto estimado", formatCurrency(summary.grossProfit)],
     ["Margem media", formatPercent(summary.averageMargin)],
-    ["Taxas de cartao estimadas", formatCurrency(summary.cardFees)],
     ["Perfumes vendidos", summary.itemsCount],
     ["Perfumes diferentes cadastrados", stockSummary.differentPerfumes],
     ["Unidades em estoque", stockSummary.totalUnits],
     ["Itens com poucas unidades", stockSummary.lowItems],
     ["Itens sem estoque", stockSummary.emptyItems],
+    ["Taxas de cartao estimadas", formatCurrency(summary.cardFees)],
     ["Clientes cadastrados", customerStats.registered],
     ["Clientes com pendencia", customerStats.withPending],
     ["Pendente por clientes", formatCurrency(customerStats.totalPending)],
@@ -2227,6 +2462,12 @@ export default function AdminPage() {
             ))}
           </div>
 
+          {hasMissingCost ? (
+            <p className="mt-4 border border-gold/25 bg-gold/10 p-4 text-sm leading-6 text-gold-light">
+              Alguns perfumes ainda estao sem custo cadastrado. O lucro pode nao estar preciso.
+            </p>
+          ) : null}
+
           <div className="mt-8 grid gap-4 lg:grid-cols-[0.72fr_1.28fr]">
             <section className="premium-surface p-6">
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gold">
@@ -2397,8 +2638,8 @@ export default function AdminPage() {
                     onChange={(event) => handlePerfumeChange(event.target.value)}
                     className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
                   >
-                    {perfumeCommerce.map((perfume) => (
-                      <option key={perfume.name} value={perfumeSlug(perfume)}>
+                    {salePerfumeOptions.map((perfume) => (
+                      <option key={perfume.slug} value={perfume.slug}>
                         {perfume.name}
                       </option>
                     ))}
@@ -2521,7 +2762,7 @@ export default function AdminPage() {
                     <p>Valor total: {formatCurrency(preview.revenue)}</p>
                     <p>Custo estimado: {formatCurrency(preview.estimatedCost)}</p>
                     <p>Taxa cartao: {formatCurrency(preview.cardFee)}</p>
-                    <p>Lucro estimado: {formatCurrency(preview.netProfit)}</p>
+                    <p>Lucro bruto: {formatCurrency(preview.grossProfit)}</p>
                   </div>
                 </div>
 
@@ -2684,7 +2925,7 @@ export default function AdminPage() {
                               </p>
                               <p>
                                 Lucro estimado:{" "}
-                                {formatCurrency(profit.netProfit)}
+                                {formatCurrency(profit.grossProfit)}
                               </p>
                               <p>Margem: {formatPercent(profit.marginPercent)}</p>
                             </div>
@@ -3292,10 +3533,10 @@ export default function AdminPage() {
                     Perfumes
                   </p>
                   <h2 className="mt-3 text-2xl font-semibold text-white">
-                    Cadastro dinamico de perfumes
+                    Cadastro de perfumes
                   </h2>
                   <p className="mt-3 text-sm leading-7 text-stone-400">
-                    Futuro: publicar automaticamente os perfumes ativos no catalogo publico.
+                    Controle de estoque, custo, preco de venda e margem.
                   </p>
                 </div>
                 {isSupabaseMode ? (
@@ -3322,7 +3563,7 @@ export default function AdminPage() {
 
               {!isSupabaseMode ? (
                 <div className="mt-6 border border-gold/25 bg-gold/10 p-5 text-sm leading-7 text-gold-light">
-                  O cadastro dinamico de perfumes estara disponivel quando o sistema online estiver configurado e voce estiver logado.
+                  O cadastro de perfumes estara disponivel quando o sistema online estiver configurado e voce estiver logado.
                 </div>
               ) : (
                 <div className="mt-6 grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
@@ -3511,52 +3752,130 @@ export default function AdminPage() {
                   </form>
 
                   <div className="grid gap-3">
+                    <section className="border border-gold/25 bg-gold/10 p-5">
+                      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
+                            Alertas de reposicao
+                          </p>
+                          <h3 className="mt-3 text-xl font-semibold text-white">
+                            Itens que precisam de atencao
+                          </h3>
+                        </div>
+                        <p className="text-sm text-gold-light">
+                          {replenishmentRows.length} item
+                          {replenishmentRows.length === 1 ? "" : "s"}
+                        </p>
+                      </div>
+
+                      <div className="mt-5 grid gap-3">
+                        {replenishmentRows.length === 0 ? (
+                          <p className="border border-white/10 bg-black/25 p-4 text-sm text-stone-400">
+                            Nenhum alerta de reposicao no momento.
+                          </p>
+                        ) : (
+                          replenishmentRows.map((row) => {
+                            if ("perfume" in row && "price" in row) {
+                              return (
+                                <article
+                                  key={row.perfume.id}
+                                  className="border border-white/10 bg-black/25 p-4"
+                                >
+                                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                                    <div>
+                                      <h4 className="text-lg font-semibold text-white">
+                                        {row.perfume.name}
+                                      </h4>
+                                      <p className="mt-2 text-sm text-stone-400">
+                                        {row.perfume.collection} &bull; Estoque atual:{" "}
+                                        {row.stockQuantity} &bull;{" "}
+                                        {formatCurrency(row.price)}
+                                      </p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => editPerfume(row.perfume)}
+                                      className="min-h-10 w-fit rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold"
+                                    >
+                                      Editar perfume
+                                    </button>
+                                  </div>
+                                </article>
+                              );
+                            }
+
+                            return null;
+                          })
+                        )}
+                      </div>
+                    </section>
+
                     {supabasePerfumes.length === 0 ? (
                       <div className="border border-white/10 bg-black/25 p-6 text-center">
                         <p className="text-sm text-stone-500">
-                          Nenhum perfume dinamico cadastrado ainda.
+                          Nenhum perfume cadastrado ainda.
                         </p>
                       </div>
                     ) : (
-                      supabasePerfumes.map((perfume) => (
-                        <article
-                          key={perfume.id}
-                          className="border border-white/10 bg-black/25 p-5"
-                        >
-                          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
-                            <div>
-                              <p className="text-xs uppercase tracking-[0.22em] text-gold/80">
-                                {perfume.collection}
-                              </p>
-                              <h3 className="mt-2 text-xl font-semibold text-white">
-                                {perfume.name}
-                              </h3>
-                              <p className="mt-2 text-sm text-stone-400">
-                                {perfume.inspiration || "Sem inspiracao"} &bull; {formatCurrency(Number(perfume.price) || 0)} &bull; Estoque {perfume.stock_quantity}
-                              </p>
-                              <p className="mt-2 text-sm text-stone-500">
-                                {perfume.availability_status} &bull; {perfume.is_active ? "Ativo" : "Inativo"}
-                              </p>
+                      onlinePerfumeRows.map((row) => {
+                        const perfume = row.perfume;
+                        const statusClass = stockStatusClass(row.status);
+
+                        return (
+                          <article
+                            key={perfume.id}
+                            className="border border-white/10 bg-black/25 p-5"
+                          >
+                            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-3">
+                                  <p className="text-xs uppercase tracking-[0.22em] text-gold/80">
+                                    {perfume.collection}
+                                  </p>
+                                  <span
+                                    className={`border px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${statusClass}`}
+                                  >
+                                    {row.status}
+                                  </span>
+                                </div>
+                                <h3 className="mt-2 text-xl font-semibold text-white">
+                                  {perfume.name}
+                                </h3>
+                                <div className="mt-4 grid gap-2 text-sm text-stone-300 sm:grid-cols-2 xl:grid-cols-3">
+                                  <p>Tipo: {bottleTypeLabel(perfume.bottle_type)}</p>
+                                  <p>Preco: {formatCurrency(row.price)}</p>
+                                  <p>Custo: {formatCurrency(row.cost)}</p>
+                                  <p>
+                                    Lucro unitario:{" "}
+                                    {formatCurrency(row.unitProfit)}
+                                  </p>
+                                  <p>Margem: {formatPercent(row.margin)}</p>
+                                  <p>Estoque: {row.stockQuantity}</p>
+                                </div>
+                                <p className="mt-3 text-sm text-stone-500">
+                                  {perfume.is_active ? "Ativo" : "Inativo"} no cadastro
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => editPerfume(perfume)}
+                                  className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold"
+                                >
+                                  Editar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => deletePerfume(perfume.id)}
+                                  className="min-h-10 rounded-full border border-red-400/30 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-red-300 transition hover:bg-red-400/10"
+                                >
+                                  Excluir
+                                </button>
+                              </div>
                             </div>
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={() => editPerfume(perfume)}
-                                className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold"
-                              >
-                                Editar
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => deletePerfume(perfume.id)}
-                                className="min-h-10 rounded-full border border-red-400/30 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-red-300 transition hover:bg-red-400/10"
-                              >
-                                Excluir
-                              </button>
-                            </div>
-                          </div>
-                        </article>
-                      ))
+                          </article>
+                        );
+                      })
                     )}
                   </div>
                 </div>
