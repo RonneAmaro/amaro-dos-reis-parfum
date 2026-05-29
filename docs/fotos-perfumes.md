@@ -25,4 +25,30 @@ Neste momento, o painel aceita URLs de imagem. Cole uma URL publica em cada camp
 
 Na galeria, informe uma URL por linha.
 
-O upload real de imagens pelo Supabase Storage sera implementado futuramente.
+## Upload pelo painel
+
+1. Acesse `/admin`.
+2. Entre na aba **Perfumes**.
+3. Edite ou cadastre um perfume.
+4. Envie a imagem principal do produto.
+5. Envie a imagem conceitual, quando existir.
+6. Envie imagens extras para a galeria.
+7. Salve o perfume para gravar as URLs no cadastro.
+
+Imagens aceitas:
+
+- PNG
+- JPG/JPEG
+- WebP
+
+Tamanho maximo por arquivo: 5MB.
+
+As imagens ficam no bucket publico `amaro-perfumes` do Supabase Storage.
+
+Use cada campo assim:
+
+- **Imagem principal**: foto real do frasco.
+- **Imagem conceitual**: cenario com ingredientes, notas olfativas ou atmosfera da fragrancia.
+- **Galeria**: detalhes, embalagem, angulos extras e composicoes.
+
+Os campos de URL continuam disponiveis para colar links manualmente quando necessario.

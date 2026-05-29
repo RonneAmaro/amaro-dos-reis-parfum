@@ -189,6 +189,9 @@ export function CatalogClient({ perfumes }: { perfumes: PublicPerfume[] }) {
                         <img
                           src={perfumeDisplayImage(perfume)}
                           alt={perfume.name}
+                          onError={(event) => {
+                            event.currentTarget.style.display = "none";
+                          }}
                           className="max-h-full w-full object-contain"
                         />
                       </div>

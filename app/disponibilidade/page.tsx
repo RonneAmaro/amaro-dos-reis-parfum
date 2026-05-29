@@ -88,6 +88,9 @@ export default async function DisponibilidadePage() {
                               <img
                                 src={perfume.imageUrl || perfume.conceptImageUrl}
                                 alt={perfume.name}
+                                onError={(event) => {
+                                  event.currentTarget.style.display = "none";
+                                }}
                                 className="h-full w-full object-contain p-1.5"
                               />
                             </div>

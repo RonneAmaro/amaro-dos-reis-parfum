@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import {
   calculateCardFee,
@@ -14,6 +14,10 @@ import {
   perfumeSlug,
   type PerfumeLine,
 } from "@/lib/perfumes";
+import {
+  uploadPerfumeImage,
+  type PerfumeImageKind,
+} from "@/lib/perfume-image-upload";
 import { createSlugFromName, splitNotes } from "@/lib/perfume-utils";
 import {
   BACKUP_INFO_STORAGE_KEY,
@@ -580,6 +584,12 @@ export default function AdminPage() {
   const [editingPerfumeId, setEditingPerfumeId] = useState<string | null>(null);
   const [perfumeMessage, setPerfumeMessage] = useState("");
   const [isPerfumeLoading, setIsPerfumeLoading] = useState(false);
+  const [mainImageFile, setMainImageFile] = useState<File | null>(null);
+  const [conceptImageFile, setConceptImageFile] = useState<File | null>(null);
+  const [galleryImageFiles, setGalleryImageFiles] = useState<File[]>([]);
+  const [uploadingImageKind, setUploadingImageKind] =
+    useState<PerfumeImageKind | null>(null);
+  const [imageUploadMessage, setImageUploadMessage] = useState("");
   const isDevelopment = process.env.NODE_ENV === "development";
   const isAuthorizedAdmin = Boolean(adminRole);
   const isSupabaseMode =
@@ -626,6 +636,10 @@ export default function AdminPage() {
   const unitCost =
     selectedSalePerfume?.costPrice ??
     getEstimatedUnitCost(toCostLine(form.lineType), DEFAULT_COST_SETTINGS);
+  const galleryPreviewUrls = useMemo(
+    () => splitImageUrls(perfumeForm.galleryImageUrls),
+    [perfumeForm.galleryImageUrls]
+  );
 
   useEffect(() => {
     setSales(readLocalSales());
@@ -1519,11 +1533,115 @@ export default function AdminPage() {
     }
 
     setPerfumeForm(initialPerfumeForm);
+    setMainImageFile(null);
+    setConceptImageFile(null);
+    setGalleryImageFiles([]);
+    setImageUploadMessage("");
     setEditingPerfumeId(null);
     await loadSupabasePerfumes();
     setPerfumeMessage(
       editingPerfumeId ? "Perfume atualizado." : "Perfume cadastrado."
     );
+  }
+
+  function handleGalleryFileChange(event: ChangeEvent<HTMLInputElement>) {
+    setGalleryImageFiles(Array.from(event.target.files ?? []));
+  }
+
+  async function uploadSinglePerfumeImage(kind: "main" | "concept") {
+    const file = kind === "main" ? mainImageFile : conceptImageFile;
+
+    if (!file) {
+      setImageUploadMessage("Escolha uma imagem antes de enviar.");
+      return;
+    }
+
+    if (!authUser?.id) {
+      setImageUploadMessage("Entre novamente no painel antes de enviar imagens.");
+      return;
+    }
+
+    setUploadingImageKind(kind);
+    setImageUploadMessage("Enviando imagem...");
+
+    try {
+      const { publicUrl } = await uploadPerfumeImage({
+        file,
+        userId: authUser.id,
+        kind,
+      });
+
+      setPerfumeForm((current) => ({
+        ...current,
+        [kind === "main" ? "imageUrl" : "conceptImageUrl"]: publicUrl,
+      }));
+
+      if (kind === "main") {
+        setMainImageFile(null);
+      } else {
+        setConceptImageFile(null);
+      }
+
+      setImageUploadMessage("Imagem enviada e URL preenchida no formulario.");
+    } catch (error) {
+      setImageUploadMessage(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel enviar a imagem."
+      );
+    } finally {
+      setUploadingImageKind(null);
+    }
+  }
+
+  async function uploadGalleryPerfumeImages() {
+    if (galleryImageFiles.length === 0) {
+      setImageUploadMessage("Escolha uma ou mais imagens para a galeria.");
+      return;
+    }
+
+    if (!authUser?.id) {
+      setImageUploadMessage("Entre novamente no painel antes de enviar imagens.");
+      return;
+    }
+
+    setUploadingImageKind("gallery");
+    setImageUploadMessage("Enviando imagens da galeria...");
+
+    try {
+      const uploadedImages = await Promise.all(
+        galleryImageFiles.map((file) =>
+          uploadPerfumeImage({
+            file,
+            userId: authUser.id,
+            kind: "gallery",
+          })
+        )
+      );
+      const nextUrls = [
+        ...splitImageUrls(perfumeForm.galleryImageUrls),
+        ...uploadedImages.map((image) => image.publicUrl),
+      ];
+
+      setPerfumeForm((current) => ({
+        ...current,
+        galleryImageUrls: nextUrls.join("\n"),
+      }));
+      setGalleryImageFiles([]);
+      setImageUploadMessage(
+        `${uploadedImages.length} imagem${
+          uploadedImages.length === 1 ? "" : "s"
+        } adicionada${uploadedImages.length === 1 ? "" : "s"} a galeria.`
+      );
+    } catch (error) {
+      setImageUploadMessage(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel enviar as imagens da galeria."
+      );
+    } finally {
+      setUploadingImageKind(null);
+    }
   }
 
   async function importInitialPerfumes() {
@@ -1601,6 +1719,10 @@ export default function AdminPage() {
   function editPerfume(perfume: SupabasePerfumeRow) {
     setEditingPerfumeId(perfume.id);
     setPerfumeForm(mapPerfumeToForm(perfume));
+    setMainImageFile(null);
+    setConceptImageFile(null);
+    setGalleryImageFiles([]);
+    setImageUploadMessage("");
     setPerfumeMessage("Editando perfume selecionado.");
   }
 
@@ -3604,8 +3726,6 @@ export default function AdminPage() {
                         ["Notas de fundo", "baseNotes"],
                         ["Descricao curta", "shortDescription"],
                         ["Tags separadas por virgula", "tags"],
-                        ["URL da imagem principal", "imageUrl"],
-                        ["URL da imagem conceitual", "conceptImageUrl"],
                       ].map(([label, key]) => (
                         <label key={key}>
                           <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
@@ -3711,6 +3831,220 @@ export default function AdminPage() {
                         ))}
                       </div>
 
+                      <section className="border border-gold/20 bg-black/30 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
+                          Fotos do perfume
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-stone-500">
+                          Envie imagens pelo Supabase Storage ou cole URLs
+                          publicas manualmente.
+                        </p>
+
+                        <div className="mt-5 grid gap-4">
+                          <label>
+                            <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                              URL da imagem principal
+                            </span>
+                            <input
+                              value={perfumeForm.imageUrl}
+                              onChange={(event) =>
+                                setPerfumeForm((current) => ({
+                                  ...current,
+                                  imageUrl: event.target.value,
+                                }))
+                              }
+                              className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
+                            />
+                          </label>
+
+                          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                            <label>
+                              <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                                Enviar imagem principal
+                              </span>
+                              <input
+                                type="file"
+                                accept="image/png,image/jpeg,image/webp"
+                                onChange={(event) =>
+                                  setMainImageFile(event.target.files?.[0] ?? null)
+                                }
+                                className="mt-2 block w-full text-sm text-stone-400 file:mr-4 file:min-h-10 file:rounded-full file:border-0 file:bg-gold file:px-4 file:text-xs file:font-semibold file:uppercase file:tracking-[0.14em] file:text-black"
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => uploadSinglePerfumeImage("main")}
+                              disabled={uploadingImageKind !== null}
+                              className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {uploadingImageKind === "main"
+                                ? "Enviando..."
+                                : "Enviar imagem principal"}
+                            </button>
+                          </div>
+
+                          <label>
+                            <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                              URL da imagem conceitual
+                            </span>
+                            <input
+                              value={perfumeForm.conceptImageUrl}
+                              onChange={(event) =>
+                                setPerfumeForm((current) => ({
+                                  ...current,
+                                  conceptImageUrl: event.target.value,
+                                }))
+                              }
+                              className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
+                            />
+                          </label>
+
+                          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                            <label>
+                              <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                                Enviar imagem conceitual
+                              </span>
+                              <input
+                                type="file"
+                                accept="image/png,image/jpeg,image/webp"
+                                onChange={(event) =>
+                                  setConceptImageFile(event.target.files?.[0] ?? null)
+                                }
+                                className="mt-2 block w-full text-sm text-stone-400 file:mr-4 file:min-h-10 file:rounded-full file:border-0 file:bg-gold file:px-4 file:text-xs file:font-semibold file:uppercase file:tracking-[0.14em] file:text-black"
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => uploadSinglePerfumeImage("concept")}
+                              disabled={uploadingImageKind !== null}
+                              className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {uploadingImageKind === "concept"
+                                ? "Enviando..."
+                                : "Enviar imagem conceitual"}
+                            </button>
+                          </div>
+
+                          <label>
+                            <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                              Galeria de imagens
+                            </span>
+                            <textarea
+                              rows={4}
+                              value={perfumeForm.galleryImageUrls}
+                              placeholder="Uma URL por linha"
+                              onChange={(event) =>
+                                setPerfumeForm((current) => ({
+                                  ...current,
+                                  galleryImageUrls: event.target.value,
+                                }))
+                              }
+                              className="mt-2 w-full resize-none border border-gold/25 bg-black/45 px-4 py-3 text-sm text-white outline-none transition placeholder:text-stone-600 focus:border-gold"
+                            />
+                          </label>
+
+                          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                            <label>
+                              <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                                Enviar imagens da galeria
+                              </span>
+                              <input
+                                type="file"
+                                multiple
+                                accept="image/png,image/jpeg,image/webp"
+                                onChange={handleGalleryFileChange}
+                                className="mt-2 block w-full text-sm text-stone-400 file:mr-4 file:min-h-10 file:rounded-full file:border-0 file:bg-gold file:px-4 file:text-xs file:font-semibold file:uppercase file:tracking-[0.14em] file:text-black"
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={uploadGalleryPerfumeImages}
+                              disabled={uploadingImageKind !== null}
+                              className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {uploadingImageKind === "gallery"
+                                ? "Enviando..."
+                                : "Enviar imagens da galeria"}
+                            </button>
+                          </div>
+
+                          {galleryImageFiles.length > 0 ? (
+                            <p className="text-sm text-stone-400">
+                              {galleryImageFiles.length} arquivo
+                              {galleryImageFiles.length === 1 ? "" : "s"} selecionado
+                              {galleryImageFiles.length === 1 ? "" : "s"}.
+                            </p>
+                          ) : null}
+
+                          {imageUploadMessage ? (
+                            <p className="text-sm leading-6 text-gold-light">
+                              {imageUploadMessage}
+                            </p>
+                          ) : null}
+
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {perfumeForm.imageUrl ? (
+                              <div className="border border-white/10 bg-black/35 p-3">
+                                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gold">
+                                  Imagem principal
+                                </p>
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={perfumeForm.imageUrl}
+                                  alt="Imagem principal"
+                                  onError={(event) => {
+                                    event.currentTarget.style.display = "none";
+                                  }}
+                                  className="mt-3 h-32 w-full object-contain"
+                                />
+                              </div>
+                            ) : null}
+                            {perfumeForm.conceptImageUrl ? (
+                              <div className="border border-white/10 bg-black/35 p-3">
+                                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gold">
+                                  Imagem conceitual
+                                </p>
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={perfumeForm.conceptImageUrl}
+                                  alt="Imagem conceitual"
+                                  onError={(event) => {
+                                    event.currentTarget.style.display = "none";
+                                  }}
+                                  className="mt-3 h-32 w-full object-contain"
+                                />
+                              </div>
+                            ) : null}
+                          </div>
+
+                          {galleryPreviewUrls.length > 0 ? (
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gold">
+                                Galeria ({galleryPreviewUrls.length})
+                              </p>
+                              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                                {galleryPreviewUrls.map((imageUrl, index) => (
+                                  <div
+                                    key={`${imageUrl}-${index}`}
+                                    className="border border-white/10 bg-black/35 p-2"
+                                  >
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                      src={imageUrl}
+                                      alt={`Galeria ${index + 1}`}
+                                      onError={(event) => {
+                                        event.currentTarget.style.display = "none";
+                                      }}
+                                      className="h-24 w-full object-contain"
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      </section>
+
                       <label>
                         <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
                           Descricao longa
@@ -3725,24 +4059,6 @@ export default function AdminPage() {
                             }))
                           }
                           className="mt-2 w-full resize-none border border-gold/25 bg-black/45 px-4 py-3 text-sm text-white outline-none transition focus:border-gold"
-                        />
-                      </label>
-
-                      <label>
-                        <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                          Galeria de imagens
-                        </span>
-                        <textarea
-                          rows={4}
-                          value={perfumeForm.galleryImageUrls}
-                          placeholder="Uma URL por linha"
-                          onChange={(event) =>
-                            setPerfumeForm((current) => ({
-                              ...current,
-                              galleryImageUrls: event.target.value,
-                            }))
-                          }
-                          className="mt-2 w-full resize-none border border-gold/25 bg-black/45 px-4 py-3 text-sm text-white outline-none transition placeholder:text-stone-600 focus:border-gold"
                         />
                       </label>
 
@@ -3780,6 +4096,10 @@ export default function AdminPage() {
                             setPerfumeForm(initialPerfumeForm);
                             setEditingPerfumeId(null);
                             setPerfumeMessage("");
+                            setMainImageFile(null);
+                            setConceptImageFile(null);
+                            setGalleryImageFiles([]);
+                            setImageUploadMessage("");
                           }}
                           className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold"
                         >
@@ -3874,6 +4194,9 @@ export default function AdminPage() {
                                     <img
                                       src={perfume.image_url}
                                       alt={perfume.name}
+                                      onError={(event) => {
+                                        event.currentTarget.style.display = "none";
+                                      }}
                                       className="h-full w-full object-contain p-2"
                                     />
                                   </div>

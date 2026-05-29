@@ -58,8 +58,17 @@ O painel aceita URLs para imagem principal, imagem conceitual e galeria de
 fotos dos perfumes. A galeria usa uma URL por linha e aparece no catalogo e na
 pagina individual do perfume quando preenchida.
 
-O upload real de imagens sera implementado em um pacote futuro com Supabase
-Storage. Veja as orientacoes em [`docs/fotos-perfumes.md`](docs/fotos-perfumes.md).
+## Upload de imagens dos perfumes
+
+O upload de imagens usa Supabase Storage com o bucket publico
+`amaro-perfumes`. Aplique a migration de Storage antes de usar o envio pelo
+painel admin.
+
+O frontend usa apenas a anon key publica e as policies do Storage; nao use
+service role no navegador. As imagens de catalogo sao publicas para exibicao no
+site.
+
+Veja as orientacoes em [`docs/fotos-perfumes.md`](docs/fotos-perfumes.md).
 
 ## Deploy na Vercel
 

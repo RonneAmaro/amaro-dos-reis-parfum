@@ -72,7 +72,14 @@ function PerfumeImageFrame({
           className={`flex ${className} items-center justify-center bg-[radial-gradient(circle_at_center,rgba(216,183,106,0.14),transparent_58%)] p-5`}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={src} alt={alt} className="max-h-full w-full object-contain" />
+          <img
+            src={src}
+            alt={alt}
+            onError={(event) => {
+              event.currentTarget.style.display = "none";
+            }}
+            className="max-h-full w-full object-contain"
+          />
         </div>
       ) : (
         <div
