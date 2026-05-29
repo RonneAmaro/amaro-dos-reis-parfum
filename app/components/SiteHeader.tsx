@@ -9,18 +9,18 @@ const whatsappHref = createWhatsAppLink(
 export default function SiteHeader() {
   return (
     <header className="sticky top-0 z-50 border-b border-gold/15 bg-black/80 backdrop-blur-xl">
-      <nav className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-4 text-xs font-semibold uppercase tracking-[0.22em] text-stone-400 sm:flex-row sm:items-center sm:justify-between sm:px-10 lg:px-12">
+      <nav className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-3 text-xs font-semibold uppercase tracking-[0.22em] text-stone-400 sm:flex-row sm:items-center sm:justify-between sm:px-10 sm:py-4 lg:px-12 lg:py-5">
         <Link
           href="/"
-          className="group inline-flex w-fit items-center text-gold transition hover:text-gold-light"
+          className="group inline-flex w-fit shrink-0 items-center text-gold transition hover:text-gold-light"
         >
           <Image
             src="/logo-amaro-parfum.png"
             alt="Amaro dos Reis Parfum"
-            width={180}
-            height={64}
+            width={200}
+            height={200}
             priority
-            className="h-14 w-auto object-contain"
+            className="h-16 w-auto object-contain sm:h-20 lg:h-24"
           />
         </Link>
 

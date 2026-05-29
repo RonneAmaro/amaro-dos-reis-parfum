@@ -14,9 +14,9 @@ export default function SiteFooter() {
           <Image
             src="/logo-amaro-parfum.png"
             alt="Amaro dos Reis Parfum"
-            width={180}
-            height={64}
-            className="h-16 w-auto object-contain"
+            width={160}
+            height={160}
+            className="h-16 w-auto object-contain sm:h-20"
           />
           <p className="mt-4 max-w-xl leading-7">
             Perfumaria autoral com referencias olfativas premium, nomes
