@@ -8,11 +8,11 @@ const whatsappHref = createWhatsAppLink(
 
 export default function SiteHeader() {
   return (
-    <header className="sticky top-0 z-50 overflow-visible border-b border-gold/15 bg-black/80 backdrop-blur-xl">
-      <nav className="relative mx-auto flex h-[72px] max-w-7xl items-center overflow-visible px-6 text-xs font-semibold uppercase tracking-[0.22em] text-stone-400 sm:h-[84px] sm:px-10 lg:h-[88px] lg:px-12">
+    <header className="sticky top-0 z-50 border-b border-gold/15 bg-black/80 backdrop-blur-xl">
+      <nav className="mx-auto flex max-w-7xl items-center gap-4 px-6 py-3 text-xs font-semibold uppercase tracking-[0.22em] text-stone-400 sm:px-10 sm:py-4 lg:px-12">
         <Link
           href="/"
-          className="group absolute left-4 top-2 z-10 inline-flex w-fit items-start text-gold transition hover:text-gold-light sm:left-8 lg:left-10"
+          className="group inline-flex w-fit shrink-0 items-center text-gold transition hover:text-gold-light"
         >
           <Image
             src="/logo-amaro-parfum.png"
@@ -20,11 +20,11 @@ export default function SiteHeader() {
             width={360}
             height={360}
             priority
-            className="h-24 w-auto object-contain sm:h-36 lg:h-44"
+            className="h-20 w-auto object-contain sm:h-28 lg:h-32"
           />
         </Link>
 
-        <div className="ml-28 flex min-w-0 flex-1 items-center gap-x-4 overflow-x-auto whitespace-nowrap py-2 [scrollbar-width:none] sm:ml-40 sm:flex-wrap sm:justify-end sm:gap-x-6 sm:gap-y-3 sm:overflow-visible sm:whitespace-normal lg:ml-52">
+        <div className="flex min-w-0 flex-1 items-center gap-x-4 overflow-x-auto whitespace-nowrap py-2 [scrollbar-width:none] sm:flex-wrap sm:justify-end sm:gap-x-6 sm:gap-y-3 sm:overflow-visible sm:whitespace-normal">
           <Link href="/" className="transition hover:text-gold-light">
             Inicio
           </Link>
