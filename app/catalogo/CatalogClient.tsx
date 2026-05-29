@@ -54,6 +54,10 @@ function matchesFilter(perfume: PublicPerfume, filter: string) {
   return perfume.collection === filter;
 }
 
+function perfumeDisplayImage(perfume: PublicPerfume) {
+  return perfume.imageUrl || perfume.conceptImageUrl;
+}
+
 export function CatalogClient({ perfumes }: { perfumes: PublicPerfume[] }) {
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState("Todas");
@@ -178,6 +182,28 @@ export function CatalogClient({ perfumes }: { perfumes: PublicPerfume[] }) {
                   key={perfume.slug}
                   className="premium-surface flex min-h-[470px] flex-col p-6 transition hover:-translate-y-1 hover:border-gold/55"
                 >
+                  <div className="mb-6 overflow-hidden rounded border border-gold/20 bg-[#070604]">
+                    {perfumeDisplayImage(perfume) ? (
+                      <div className="flex aspect-[4/3] items-center justify-center bg-[radial-gradient(circle_at_center,rgba(216,183,106,0.14),transparent_58%)] p-4">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={perfumeDisplayImage(perfume)}
+                          alt={perfume.name}
+                          className="max-h-full w-full object-contain"
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex aspect-[4/3] flex-col items-center justify-center bg-[radial-gradient(circle_at_center,rgba(216,183,106,0.16),transparent_58%)] px-6 text-center">
+                        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-gold">
+                          Amaro dos Reis Parfum
+                        </p>
+                        <p className="mt-3 text-sm uppercase tracking-[0.24em] text-stone-500">
+                          Imagem em breve
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="text-xs uppercase tracking-[0.24em] text-gold/80">

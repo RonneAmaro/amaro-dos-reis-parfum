@@ -23,6 +23,8 @@ type PublicPerfumeRow = {
   long_description: string | null;
   tags: string[] | null;
   image_url: string | null;
+  concept_image_url: string | null;
+  gallery_image_urls: string[] | null;
   availability_status: AvailabilityStatus;
   created_at: string;
   updated_at: string;
@@ -49,6 +51,11 @@ export type PublicPerfume = {
   description: string;
   tags: string[];
   imageUrl?: string;
+  image_url?: string;
+  conceptImageUrl?: string;
+  concept_image_url?: string;
+  galleryImageUrls: string[];
+  gallery_image_urls: string[];
   availabilityStatus: AvailabilityStatus;
   whatsappMessage: string;
   indicatedFor: string[];
@@ -106,6 +113,12 @@ function fallbackPerfumes(): PublicPerfume[] {
     longDescription: perfume.description,
     description: perfume.description,
     tags: perfume.tags,
+    imageUrl: perfume.imageUrl,
+    image_url: perfume.imageUrl,
+    conceptImageUrl: perfume.conceptImageUrl,
+    concept_image_url: perfume.conceptImageUrl,
+    galleryImageUrls: perfume.galleryImageUrls ?? [],
+    gallery_image_urls: perfume.galleryImageUrls ?? [],
     availabilityStatus: perfume.availabilityStatus,
     whatsappMessage: perfume.whatsappMessage,
     indicatedFor: perfume.indicatedFor,
@@ -142,6 +155,11 @@ function normalizeRow(row: PublicPerfumeRow): PublicPerfume {
     description,
     tags: row.tags ?? [],
     imageUrl: row.image_url || undefined,
+    image_url: row.image_url || undefined,
+    conceptImageUrl: row.concept_image_url || undefined,
+    concept_image_url: row.concept_image_url || undefined,
+    galleryImageUrls: row.gallery_image_urls ?? [],
+    gallery_image_urls: row.gallery_image_urls ?? [],
     availabilityStatus: row.availability_status,
     whatsappMessage: `Ola! Tenho interesse no perfume ${row.name} da Amaro dos Reis Parfum. Pode me passar mais informacoes?`,
     indicatedFor: row.tags?.length ? row.tags.slice(0, 3) : ["Dia a dia"],

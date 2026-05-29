@@ -52,6 +52,15 @@ usuario existir no Supabase Auth. Veja o passo a passo em
 
 O favicon oficial da marca esta em `public/favicon-amaro.svg`.
 
+## Fotos e galeria dos perfumes
+
+O painel aceita URLs para imagem principal, imagem conceitual e galeria de
+fotos dos perfumes. A galeria usa uma URL por linha e aparece no catalogo e na
+pagina individual do perfume quando preenchida.
+
+O upload real de imagens sera implementado em um pacote futuro com Supabase
+Storage. Veja as orientacoes em [`docs/fotos-perfumes.md`](docs/fotos-perfumes.md).
+
 ## Deploy na Vercel
 
 1. Crie ou importe o projeto na Vercel pelo GitHub.

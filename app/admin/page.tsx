@@ -139,6 +139,8 @@ type PerfumeForm = {
   longDescription: string;
   tags: string;
   imageUrl: string;
+  conceptImageUrl: string;
+  galleryImageUrls: string;
   availabilityStatus: AvailabilityStatus;
   isActive: boolean;
 };
@@ -185,6 +187,8 @@ type SupabasePerfumeRow = {
   long_description: string | null;
   tags: string[] | null;
   image_url: string | null;
+  concept_image_url: string | null;
+  gallery_image_urls: string[] | null;
   availability_status: AvailabilityStatus;
   is_active: boolean;
   created_at: string;
@@ -228,6 +232,8 @@ const initialPerfumeForm: PerfumeForm = {
   longDescription: "",
   tags: "",
   imageUrl: "",
+  conceptImageUrl: "",
+  galleryImageUrls: "",
   availabilityStatus: "limited",
   isActive: true,
 };
@@ -319,6 +325,8 @@ function mapPerfumeToForm(perfume: SupabasePerfumeRow): PerfumeForm {
     longDescription: perfume.long_description ?? "",
     tags: (perfume.tags ?? []).join(", "),
     imageUrl: perfume.image_url ?? "",
+    conceptImageUrl: perfume.concept_image_url ?? "",
+    galleryImageUrls: (perfume.gallery_image_urls ?? []).join("\n"),
     availabilityStatus: perfume.availability_status,
     isActive: perfume.is_active,
   };
@@ -512,6 +520,13 @@ function stockStatusClass(status: string) {
 
 function bottleTypeLabel(type: BottleType) {
   return type === "arabe" ? "Arabe Premium" : "Tradicional";
+}
+
+function splitImageUrls(value: string) {
+  return value
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function readLocalSales() {
@@ -1482,6 +1497,8 @@ export default function AdminPage() {
       long_description: perfumeForm.longDescription.trim() || null,
       tags: splitNotes(perfumeForm.tags),
       image_url: perfumeForm.imageUrl.trim() || null,
+      concept_image_url: perfumeForm.conceptImageUrl.trim() || null,
+      gallery_image_urls: splitImageUrls(perfumeForm.galleryImageUrls),
       availability_status: perfumeForm.availabilityStatus,
       is_active: perfumeForm.isActive,
     };
@@ -1555,6 +1572,8 @@ export default function AdminPage() {
           long_description: perfume.description,
           tags: perfume.tags,
           image_url: null,
+          concept_image_url: null,
+          gallery_image_urls: [],
           availability_status: perfume.availabilityStatus,
           is_active: true,
         };
@@ -3585,7 +3604,8 @@ export default function AdminPage() {
                         ["Notas de fundo", "baseNotes"],
                         ["Descricao curta", "shortDescription"],
                         ["Tags separadas por virgula", "tags"],
-                        ["URL da imagem", "imageUrl"],
+                        ["URL da imagem principal", "imageUrl"],
+                        ["URL da imagem conceitual", "conceptImageUrl"],
                       ].map(([label, key]) => (
                         <label key={key}>
                           <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
@@ -3708,6 +3728,24 @@ export default function AdminPage() {
                         />
                       </label>
 
+                      <label>
+                        <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                          Galeria de imagens
+                        </span>
+                        <textarea
+                          rows={4}
+                          value={perfumeForm.galleryImageUrls}
+                          placeholder="Uma URL por linha"
+                          onChange={(event) =>
+                            setPerfumeForm((current) => ({
+                              ...current,
+                              galleryImageUrls: event.target.value,
+                            }))
+                          }
+                          className="mt-2 w-full resize-none border border-gold/25 bg-black/45 px-4 py-3 text-sm text-white outline-none transition placeholder:text-stone-600 focus:border-gold"
+                        />
+                      </label>
+
                       <label className="flex items-center gap-3 text-sm text-stone-300">
                         <input
                           type="checkbox"
@@ -3820,6 +3858,8 @@ export default function AdminPage() {
                       onlinePerfumeRows.map((row) => {
                         const perfume = row.perfume;
                         const statusClass = stockStatusClass(row.status);
+                        const galleryCount =
+                          perfume.gallery_image_urls?.length ?? 0;
 
                         return (
                           <article
@@ -3827,7 +3867,18 @@ export default function AdminPage() {
                             className="border border-white/10 bg-black/25 p-5"
                           >
                             <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
-                              <div className="min-w-0 flex-1">
+                              <div className="flex min-w-0 flex-1 flex-col gap-4 sm:flex-row">
+                                {perfume.image_url ? (
+                                  <div className="h-24 w-24 shrink-0 overflow-hidden rounded border border-gold/20 bg-black/40">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                      src={perfume.image_url}
+                                      alt={perfume.name}
+                                      className="h-full w-full object-contain p-2"
+                                    />
+                                  </div>
+                                ) : null}
+                                <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-3">
                                   <p className="text-xs uppercase tracking-[0.22em] text-gold/80">
                                     {perfume.collection}
@@ -3852,9 +3903,21 @@ export default function AdminPage() {
                                   <p>Margem: {formatPercent(row.margin)}</p>
                                   <p>Estoque: {row.stockQuantity}</p>
                                 </div>
+                                <div className="mt-3 flex flex-wrap gap-2 text-xs text-stone-300">
+                                  <span className="border border-white/10 bg-white/[0.04] px-3 py-1">
+                                    {perfume.image_url
+                                      ? "Imagem principal"
+                                      : "Sem imagem"}
+                                  </span>
+                                  <span className="border border-white/10 bg-white/[0.04] px-3 py-1">
+                                    Galeria com {galleryCount} imagem
+                                    {galleryCount === 1 ? "" : "s"}
+                                  </span>
+                                </div>
                                 <p className="mt-3 text-sm text-stone-500">
                                   {perfume.is_active ? "Ativo" : "Inativo"} no cadastro
                                 </p>
+                                </div>
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 <button

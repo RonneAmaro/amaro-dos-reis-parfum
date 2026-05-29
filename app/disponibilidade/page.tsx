@@ -81,12 +81,26 @@ export default async function DisponibilidadePage() {
                   ) : (
                     perfumes.map((perfume) => (
                       <article key={perfume.slug} className="premium-surface p-5">
-                        <p className="text-xs uppercase tracking-[0.22em] text-gold/80">
-                          {perfume.collection}
-                        </p>
-                        <h3 className="mt-3 text-xl font-semibold uppercase tracking-[0.08em] text-white">
-                          {perfume.name}
-                        </h3>
+                        <div className="flex gap-4">
+                          {perfume.imageUrl || perfume.conceptImageUrl ? (
+                            <div className="h-16 w-16 shrink-0 overflow-hidden rounded border border-gold/20 bg-black/40">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={perfume.imageUrl || perfume.conceptImageUrl}
+                                alt={perfume.name}
+                                className="h-full w-full object-contain p-1.5"
+                              />
+                            </div>
+                          ) : null}
+                          <div className="min-w-0">
+                            <p className="text-xs uppercase tracking-[0.22em] text-gold/80">
+                              {perfume.collection}
+                            </p>
+                            <h3 className="mt-3 text-xl font-semibold uppercase tracking-[0.08em] text-white">
+                              {perfume.name}
+                            </h3>
+                          </div>
+                        </div>
                         <div className="mt-4 flex flex-wrap gap-2 text-xs text-stone-300">
                           <span className="border border-white/10 px-3 py-1">
                             {formatPrice(perfume.price)}

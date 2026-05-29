@@ -15,6 +15,9 @@ export type PerfumeCommerce = {
   whatsappMessage: string;
   indicatedFor: string[];
   tags: string[];
+  imageUrl?: string;
+  conceptImageUrl?: string;
+  galleryImageUrls?: string[];
   availabilityStatus: AvailabilityStatus;
 };
 
