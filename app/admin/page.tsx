@@ -1644,6 +1644,32 @@ export default function AdminPage() {
     }
   }
 
+  function setGalleryUrls(urls: string[]) {
+    setPerfumeForm((current) => ({
+      ...current,
+      galleryImageUrls: urls.join("\n"),
+    }));
+  }
+
+  function removeGalleryImage(indexToRemove: number) {
+    setGalleryUrls(
+      galleryPreviewUrls.filter((_, index) => index !== indexToRemove)
+    );
+    setImageUploadMessage("Imagem removida da galeria no formulario.");
+  }
+
+  function useGalleryImageAs(imageUrl: string, target: "main" | "concept") {
+    setPerfumeForm((current) => ({
+      ...current,
+      [target === "main" ? "imageUrl" : "conceptImageUrl"]: imageUrl,
+    }));
+    setImageUploadMessage(
+      target === "main"
+        ? "Imagem copiada para imagem principal."
+        : "Imagem copiada para imagem conceitual."
+    );
+  }
+
   async function importInitialPerfumes() {
     if (!supabase || !authUser || !canManagePerfumes) {
       setPerfumeMessage("Entre no modo online para importar o catalogo inicial.");
@@ -3985,9 +4011,23 @@ export default function AdminPage() {
                           <div className="grid gap-3 sm:grid-cols-2">
                             {perfumeForm.imageUrl ? (
                               <div className="border border-white/10 bg-black/35 p-3">
-                                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gold">
-                                  Imagem principal
-                                </p>
+                                <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gold">
+                                    Imagem principal
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setPerfumeForm((current) => ({
+                                        ...current,
+                                        imageUrl: "",
+                                      }))
+                                    }
+                                    className="min-h-8 w-fit rounded-full border border-red-400/30 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-red-300 transition hover:bg-red-400/10"
+                                  >
+                                    Limpar imagem principal
+                                  </button>
+                                </div>
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
                                   src={perfumeForm.imageUrl}
@@ -4001,9 +4041,23 @@ export default function AdminPage() {
                             ) : null}
                             {perfumeForm.conceptImageUrl ? (
                               <div className="border border-white/10 bg-black/35 p-3">
-                                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gold">
-                                  Imagem conceitual
-                                </p>
+                                <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gold">
+                                    Imagem conceitual
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setPerfumeForm((current) => ({
+                                        ...current,
+                                        conceptImageUrl: "",
+                                      }))
+                                    }
+                                    className="min-h-8 w-fit rounded-full border border-red-400/30 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-red-300 transition hover:bg-red-400/10"
+                                  >
+                                    Limpar imagem conceitual
+                                  </button>
+                                </div>
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
                                   src={perfumeForm.conceptImageUrl}
@@ -4037,6 +4091,33 @@ export default function AdminPage() {
                                       }}
                                       className="h-24 w-full object-contain"
                                     />
+                                    <div className="mt-2 grid gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          useGalleryImageAs(imageUrl, "main")
+                                        }
+                                        className="min-h-8 rounded-full border border-gold/30 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-gold-light transition hover:border-gold"
+                                      >
+                                        Usar como principal
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          useGalleryImageAs(imageUrl, "concept")
+                                        }
+                                        className="min-h-8 rounded-full border border-gold/30 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-gold-light transition hover:border-gold"
+                                      >
+                                        Usar como conceitual
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeGalleryImage(index)}
+                                        className="min-h-8 rounded-full border border-red-400/30 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-red-300 transition hover:bg-red-400/10"
+                                      >
+                                        Remover
+                                      </button>
+                                    </div>
                                   </div>
                                 ))}
                               </div>

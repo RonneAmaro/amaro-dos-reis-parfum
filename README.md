@@ -50,7 +50,12 @@ usuario existir no Supabase Auth. Veja o passo a passo em
 
 ## Favicon e identidade visual
 
-O favicon oficial da marca esta em `public/favicon-amaro.svg`.
+O favicon oficial da marca esta em `public/favicon-amaro.png` e e priorizado
+nos metadados do Next.js.
+
+Se o favicon nao aparecer no navegador, teste `Ctrl+F5`, uma aba anonima ou
+limpe o cache do navegador, porque favicons costumam ficar armazenados por mais
+tempo.
 
 ## Fotos e galeria dos perfumes
 

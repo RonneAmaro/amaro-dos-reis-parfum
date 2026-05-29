@@ -19,7 +19,14 @@ export const metadata: Metadata = {
   description:
     "Perfumes autorais inspirados em grandes fragrancias internacionais e orientais.",
   icons: {
-    icon: "/favicon-amaro.png",
+    icon: [
+      {
+        url: "/favicon-amaro.png",
+        type: "image/png",
+      },
+    ],
+    shortcut: "/favicon-amaro.png",
+    apple: "/favicon-amaro.png",
   },
 };
 
