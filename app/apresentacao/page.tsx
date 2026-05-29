@@ -1,101 +1,66 @@
 import Link from "next/link";
-import {
-  createPerfumeMessage,
-  formatPerfumePrice,
-  getPerfumeCommerce,
-  perfumeSlug,
-  type PerfumeCommerce,
-} from "@/lib/perfumes";
 import { createWhatsAppLink } from "@/lib/whatsapp";
 
 const catalogWhatsAppHref = createWhatsAppLink(
   "Ola! Quero conhecer o catalogo premium da Amaro dos Reis Parfum."
 );
 
-const styleGroups = [
+const choiceCards = [
   {
-    title: "Para o trabalho",
-    description:
-      "Assinaturas elegantes, limpas e confiantes para rotina, reunioes e presenca executiva.",
-    names: ["DOMINARE", "NOBLIS", "SILVERION BLACK"],
+    title: "Para presenca executiva",
+    text: "Fragrancias elegantes, limpas e confiantes para rotina profissional, reunioes e momentos de decisao.",
   },
   {
-    title: "Para dias quentes",
-    description:
-      "Perfumes frescos, aquaticos e energicos para calor, movimento e uso diario.",
-    names: ["AZURE SPORT", "VITORIUM"],
+    title: "Para momentos marcantes",
+    text: "Aromas de rastro memoravel para encontros, eventos e ocasioes em que voce deseja ser lembrado.",
   },
   {
-    title: "Para noite e presenca marcante",
-    description:
-      "Fragrancias intensas para encontros, eventos e momentos em que voce quer ser lembrado.",
-    names: ["SULTAN NOIR", "SCARLET NOIR", "IGNIS"],
+    title: "Para dias leves",
+    text: "Perfumes frescos, luminosos e confortaveis para movimento, calor e uso diario.",
   },
   {
-    title: "Para mulheres elegantes",
-    description:
-      "Florais, orientais e femininos com delicadeza sofisticada e rastro memoravel.",
-    names: ["FLOREA", "IRESIA", "SAMARAH ROSE"],
+    title: "Para noites intensas",
+    text: "Composicoes envolventes, orientais e especiadas para uma presenca mais poderosa.",
   },
   {
-    title: "Para quem gosta de doce",
-    description:
-      "Gourmand, cremosos e envolventes para quem ama docura com personalidade.",
-    names: ["MOON CANDY", "YASIRAH", "LUMIARA", "BELLE VENOM"],
-  },
-  {
-    title: "Para luxo arabe",
-    description:
-      "Fragrancias orientais, intensas e sofisticadas com presenca premium.",
-    names: ["SULTAN NOIR", "NOIR OUD ROYALE", "ALTAIR ROYALE", "YASIRAH"],
+    title: "Para presentear",
+    text: "Opcoes versateis e sofisticadas para transformar um gesto simples em uma lembranca especial.",
   },
 ];
 
-const featuredNames = [
-  "DOMINARE",
-  "SULTAN NOIR",
-  "AZURE SPORT",
-  "SAMARAH ROSE",
-  "MOON CANDY",
-  "BELLE VENOM",
-];
-
-const choosingTips = [
+const lines = [
   {
-    title: "Gosta de perfume fresco?",
-    text: "Procure fragrancias aquaticas, citricas e leves.",
+    title: "Linha Tradicional 50ml",
+    price: "R$ 80",
+    text: "Fragrancias inspiradas em grandes referencias internacionais, com leitura elegante, acessivel e autoral.",
   },
   {
-    title: "Gosta de perfume marcante?",
-    text: "Procure fragrancias amadeiradas, orientais e especiadas.",
-  },
-  {
-    title: "Gosta de perfume doce?",
-    text: "Procure fragrancias gourmand, baunilha, caramelo e frutas.",
-  },
-  {
-    title: "Quer algo elegante para o dia a dia?",
-    text: "Procure fragrancias limpas, florais e amadeiradas suaves.",
+    title: "Linha Arabe Premium 50ml",
+    price: "R$ 120",
+    text: "Perfumes com presenca oriental, intensidade marcante e proposta sensorial mais luxuosa.",
   },
 ];
 
-function perfumeByName(name: string) {
-  const perfume = getPerfumeCommerce(name);
-
-  if (!perfume) {
-    throw new Error(`Perfume not found: ${name}`);
-  }
-
-  return perfume;
-}
-
-function perfumeHref(perfume: PerfumeCommerce) {
-  return `/perfumes/${perfumeSlug(perfume)}`;
-}
+const reasons = [
+  {
+    title: "Identidade autoral",
+    text: "Nomes proprios, proposta sensorial clara e uma marca em fase premium, mais madura e memoravel.",
+  },
+  {
+    title: "Producao cuidadosa",
+    text: "Pequenos lotes, atencao ao preparo e respeito ao tempo de maturacao de cada fragrancia.",
+  },
+  {
+    title: "Experiencia olfativa",
+    text: "Perfumes pensados para comunicar presenca, estilo e emocao antes mesmo das palavras.",
+  },
+  {
+    title: "Atendimento direto",
+    text: "Curadoria proxima para orientar a escolha conforme ocasiao, personalidade e intensidade desejada.",
+  },
+];
 
 export default function ApresentacaoPage() {
-  const featuredPerfumes = featuredNames.map(perfumeByName);
-
   return (
     <main className="min-h-screen bg-[#050505] text-stone-100">
       <section className="premium-bg relative overflow-hidden border-b border-gold/15 px-6 py-16 sm:px-10 lg:px-12">
@@ -103,105 +68,67 @@ export default function ApresentacaoPage() {
         <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[1fr_0.72fr] lg:items-center">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.36em] text-gold">
-              Vitrine rapida
+              Amaro dos Reis Parfum
             </p>
             <h1 className="mt-5 max-w-4xl text-4xl font-semibold uppercase leading-tight text-white sm:text-6xl">
-              Catalogo Premium Amaro dos Reis Parfum
+              Perfume e presenca.
             </h1>
             <p className="mt-6 max-w-3xl text-lg leading-9 text-stone-300">
-              Perfumes autorais inspirados em grandes fragrancias
-              internacionais e orientais, criados para valorizar presenca,
-              estilo e personalidade.
+              Fragrancias autorais inspiradas em grandes referencias
+              internacionais e orientais, criadas para quem deseja deixar uma
+              marca por onde passa.
             </p>
 
             <div className="mt-8 flex flex-wrap gap-3">
-              {[
-                "50ml",
-                "Producao em pequenos lotes",
-                "Linha Tradicional R$ 80",
-                "Linha Arabe Premium R$ 120",
-              ].map((seal) => (
-                <span
-                  key={seal}
-                  className="border border-gold/30 bg-black/35 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-gold-light"
-                >
-                  {seal}
-                </span>
-              ))}
+              {["50ml", "Desde 2019", "Pequenos lotes", "Atendimento proximo"].map(
+                (seal) => (
+                  <span
+                    key={seal}
+                    className="border border-gold/30 bg-black/35 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-gold-light"
+                  >
+                    {seal}
+                  </span>
+                )
+              )}
             </div>
-
-            <a
-              href={catalogWhatsAppHref}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-9 inline-flex min-h-12 items-center justify-center rounded-full bg-gold px-8 text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-gold-light"
-            >
-              Falar no WhatsApp
-            </a>
           </div>
 
           <div className="premium-surface p-6 gold-glow">
             <p className="text-xs uppercase tracking-[0.28em] text-gold">
-              Escolha simples
+              Assinatura olfativa
             </p>
             <p className="mt-5 text-3xl font-semibold text-white">
-              Mostre por estilo, ocasiao e personalidade.
+              Um aroma pode chegar antes de voce e permanecer depois.
             </p>
             <p className="mt-5 leading-8 text-stone-400">
-              Uma apresentacao pensada para venda local no celular: rapida,
-              bonita e direta ao ponto.
+              A escolha certa nao apenas combina com o momento. Ela comunica
+              personalidade, cria memoria e transforma presenca em lembranca.
             </p>
           </div>
         </div>
       </section>
 
       <section className="px-6 py-16 sm:px-10 lg:px-12">
-        <div className="mx-auto max-w-7xl">
-          <div className="max-w-3xl">
+        <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
+          <div>
             <p className="text-xs font-semibold uppercase tracking-[0.32em] text-gold">
-              Escolha pelo seu estilo
+              Conquiste ou seja conquistado
             </p>
             <h2 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">
-              Uma rota simples para encontrar o perfume certo.
+              Sua presenca tambem tem cheiro.
             </h2>
           </div>
-
-          <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {styleGroups.map((group) => (
-              <article key={group.title} className="premium-surface flex flex-col p-6">
-                <h3 className="text-2xl font-semibold text-white">
-                  {group.title}
-                </h3>
-                <p className="mt-4 flex-1 leading-7 text-stone-400">
-                  {group.description}
-                </p>
-                <div className="mt-6 flex flex-wrap gap-2">
-                  {group.names.map((name) => {
-                    const perfume = perfumeByName(name);
-
-                    return (
-                      <Link
-                        key={name}
-                        href={perfumeHref(perfume)}
-                        className="border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-gold-light transition hover:border-gold/50"
-                      >
-                        {name}
-                      </Link>
-                    );
-                  })}
-                </div>
-                <a
-                  href={createWhatsAppLink(
-                    `Ola! Quero uma sugestao de perfume para ${group.title.toLowerCase()} na Amaro dos Reis Parfum.`
-                  )}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-6 inline-flex min-h-11 items-center justify-center rounded-full border border-gold/45 px-5 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold-light hover:bg-gold/10"
-                >
-                  Pedir sugestao no WhatsApp
-                </a>
-              </article>
-            ))}
+          <div className="space-y-5 text-lg leading-9 text-stone-300">
+            <p>
+              O olfato tem uma ligacao direta com memoria e emocao. Um perfume
+              pode trazer de volta um encontro, uma fase da vida, uma pessoa ou
+              uma sensacao que parecia guardada.
+            </p>
+            <p>
+              Por isso, para a Amaro dos Reis Parfum, fragrancia nao e apenas
+              cheiro. E assinatura pessoal. E a forma como voce chega,
+              permanece e e lembrado.
+            </p>
           </div>
         </div>
       </section>
@@ -210,54 +137,20 @@ export default function ApresentacaoPage() {
         <div className="mx-auto max-w-7xl">
           <div className="max-w-3xl">
             <p className="text-xs font-semibold uppercase tracking-[0.32em] text-gold">
-              Destaques da colecao
+              Como escolher sua fragrancia
             </p>
             <h2 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">
-              Fragrancias faceis de apresentar e vender.
+              Comece pela marca que voce quer deixar.
             </h2>
           </div>
 
-          <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {featuredPerfumes.map((perfume) => (
-              <article
-                key={perfume.name}
-                className="premium-surface flex min-h-[390px] flex-col p-6"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.24em] text-stone-500">
-                      Inspiracao discreta: {perfume.inspiration}
-                    </p>
-                    <h3 className="mt-4 text-2xl font-semibold uppercase tracking-[0.08em] text-gold-light">
-                      {perfume.name}
-                    </h3>
-                  </div>
-                  <p className="shrink-0 border border-gold/30 bg-gold/10 px-3 py-2 text-sm font-semibold text-gold-light">
-                    {formatPerfumePrice(perfume)}
-                  </p>
-                </div>
-                <p className="mt-5 text-sm font-semibold uppercase tracking-[0.2em] text-stone-300">
-                  {perfume.family}
-                </p>
-                <p className="mt-5 flex-1 leading-7 text-stone-400">
-                  {perfume.description}
-                </p>
-                <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                  <Link
-                    href={perfumeHref(perfume)}
-                    className="inline-flex min-h-11 flex-1 items-center justify-center rounded-full bg-gold px-5 text-xs font-semibold uppercase tracking-[0.16em] text-black transition hover:bg-gold-light"
-                  >
-                    Ver detalhes
-                  </Link>
-                  <a
-                    href={createWhatsAppLink(createPerfumeMessage(perfume.name))}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex min-h-11 flex-1 items-center justify-center rounded-full border border-gold/45 px-5 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold-light hover:bg-gold/10"
-                  >
-                    Quero esse
-                  </a>
-                </div>
+          <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            {choiceCards.map((card) => (
+              <article key={card.title} className="premium-surface p-6">
+                <h3 className="text-xl font-semibold text-gold-light">
+                  {card.title}
+                </h3>
+                <p className="mt-4 leading-7 text-stone-400">{card.text}</p>
               </article>
             ))}
           </div>
@@ -266,21 +159,21 @@ export default function ApresentacaoPage() {
 
       <section className="px-6 py-16 sm:px-10 lg:px-12">
         <div className="mx-auto max-w-7xl">
-          <div className="max-w-3xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.32em] text-gold">
-              Como escolher seu perfume
-            </p>
-            <h2 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">
-              Comece pela sensacao que voce quer passar.
-            </h2>
-          </div>
-          <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {choosingTips.map((tip) => (
-              <article key={tip.title} className="premium-surface p-6">
-                <h3 className="text-xl font-semibold text-gold-light">
-                  {tip.title}
-                </h3>
-                <p className="mt-4 leading-7 text-stone-400">{tip.text}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.32em] text-gold">
+            Linhas da marca
+          </p>
+          <div className="mt-8 grid gap-4 md:grid-cols-2">
+            {lines.map((line) => (
+              <article key={line.title} className="premium-surface p-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <h3 className="text-2xl font-semibold text-white">
+                    {line.title}
+                  </h3>
+                  <p className="w-fit border border-gold/30 bg-gold/10 px-4 py-2 text-lg font-semibold text-gold-light">
+                    {line.price}
+                  </p>
+                </div>
+                <p className="mt-5 leading-8 text-stone-400">{line.text}</p>
               </article>
             ))}
           </div>
@@ -289,58 +182,50 @@ export default function ApresentacaoPage() {
 
       <section className="bg-[#080706] px-6 py-16 sm:px-10 lg:px-12">
         <div className="mx-auto max-w-7xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.32em] text-gold">
-            Linhas da marca
-          </p>
-          <div className="mt-8 grid gap-4 md:grid-cols-2">
-            <article className="premium-surface p-6">
-              <h3 className="text-2xl font-semibold text-white">
-                Linha Tradicional 50ml — R$ 80
-              </h3>
-              <p className="mt-4 leading-8 text-stone-400">
-                Frascos modernos, fragrancias inspiradas em grandes classicos
-                internacionais.
-              </p>
-            </article>
-            <article className="premium-surface p-6">
-              <h3 className="text-2xl font-semibold text-white">
-                Linha Arabe Premium 50ml — R$ 120
-              </h3>
-              <p className="mt-4 leading-8 text-stone-400">
-                Frascos arabes, presenca intensa, luxo oriental e fragrancias
-                sofisticadas.
-              </p>
-            </article>
+          <div className="max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.32em] text-gold">
+              Por que escolher
+            </p>
+            <h2 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">
+              Por que escolher Amaro dos Reis Parfum?
+            </h2>
+          </div>
+          <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {reasons.map((reason) => (
+              <article key={reason.title} className="premium-surface p-6">
+                <h3 className="text-lg font-semibold text-gold-light">
+                  {reason.title}
+                </h3>
+                <p className="mt-4 leading-7 text-stone-400">{reason.text}</p>
+              </article>
+            ))}
           </div>
         </div>
       </section>
 
-      <section className="px-6 py-16 sm:px-10 lg:px-12">
+      <section className="px-6 py-20 sm:px-10 lg:px-12">
         <div className="mx-auto max-w-4xl text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.32em] text-gold">
-            Escolha acompanhada
+            Sua proxima fragrancia
           </p>
           <h2 className="mt-5 text-3xl font-semibold text-white sm:text-5xl">
-            Nao sabe qual escolher? Eu te ajudo a encontrar a fragrancia que
-            combina com voce.
+            Descubra a fragrancia que combina com sua presenca.
           </h2>
           <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
-            <a
-              href={createWhatsAppLink(
-                "Ola! Quero uma indicacao de perfume da Amaro dos Reis Parfum."
-              )}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex min-h-12 items-center justify-center rounded-full bg-gold px-8 text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-gold-light"
-            >
-              Pedir indicacao no WhatsApp
-            </a>
             <Link
               href="/catalogo"
+              className="inline-flex min-h-12 items-center justify-center rounded-full bg-gold px-8 text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-gold-light"
+            >
+              Ver catalogo
+            </Link>
+            <a
+              href={catalogWhatsAppHref}
+              target="_blank"
+              rel="noreferrer"
               className="inline-flex min-h-12 items-center justify-center rounded-full border border-gold/45 px-8 text-sm font-semibold uppercase tracking-[0.18em] text-gold-light transition hover:border-gold-light hover:bg-gold/10"
             >
-              Ver catalogo completo
-            </Link>
+              Falar no WhatsApp
+            </a>
           </div>
         </div>
       </section>

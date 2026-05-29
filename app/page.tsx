@@ -76,6 +76,12 @@ const reasons = [
   },
 ];
 
+const storyHighlights = [
+  "Desde 2019",
+  "De sonho a realidade",
+  "Conquiste ou seja conquistado",
+];
+
 export default function Home() {
   return (
     <main className="min-h-screen bg-[#050505] text-stone-100">
@@ -157,6 +163,44 @@ export default function Home() {
                 </p>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="border-b border-white/10 px-6 py-16 sm:px-10 lg:px-12">
+        <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.32em] text-gold">
+              Uma marca com historia
+            </p>
+            <h2 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">
+              Uma paixao por perfumes que virou presenca.
+            </h2>
+          </div>
+          <div>
+            <p className="leading-8 text-stone-400">
+              A Amaro dos Reis Parfum nasceu da historia real de Ronne com a
+              perfumaria: primeiro a descoberta dos importados, depois o estudo
+              das familias olfativas, da fabricacao e da maceracao, ate os
+              primeiros perfumes criados para uso pessoal ganharem elogios,
+              pedidos e proposito.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-2">
+              {storyHighlights.map((highlight) => (
+                <span
+                  key={highlight}
+                  className="border border-gold/25 bg-gold/10 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-gold-light"
+                >
+                  {highlight}
+                </span>
+              ))}
+            </div>
+            <Link
+              href="/sobre"
+              className="mt-7 inline-flex min-h-12 items-center justify-center rounded-full border border-gold/45 px-8 text-sm font-semibold uppercase tracking-[0.18em] text-gold-light transition hover:border-gold-light hover:bg-gold/10"
+            >
+              Conheca nossa historia
+            </Link>
           </div>
         </div>
       </section>
