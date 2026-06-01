@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   availabilityLabels,
   type AvailabilityStatus,
@@ -20,6 +21,42 @@ function formatPrice(value: number) {
     style: "currency",
     currency: "BRL",
   }).format(value);
+}
+
+function PerfumeThumb({
+  src,
+  alt,
+}: {
+  src?: string;
+  alt: string;
+}) {
+  return (
+    <div className="h-24 w-24 shrink-0 overflow-hidden border border-gold/20 bg-[radial-gradient(circle_at_center,rgba(216,183,106,0.16),rgba(5,5,5,0.95)_62%)]">
+      {src ? (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={src}
+            alt={alt}
+            onError={(event) => {
+              event.currentTarget.style.display = "none";
+            }}
+            className="h-full w-full object-contain p-2"
+          />
+        </>
+      ) : (
+        <div className="flex h-full flex-col items-center justify-center px-2 text-center">
+          <div className="mb-2 h-8 w-5 border border-gold/45" />
+          <p className="text-[8px] font-semibold uppercase tracking-[0.14em] text-gold">
+            AMAROdosREIS Parfum
+          </p>
+          <p className="mt-1 text-[8px] uppercase tracking-[0.12em] text-stone-500">
+            Imagem em breve
+          </p>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default async function DisponibilidadePage() {
@@ -62,16 +99,16 @@ export default async function DisponibilidadePage() {
 
             return (
               <section key={group.status}>
-                <div className="mb-4 flex items-end justify-between gap-4">
+                <div className="mb-4 flex items-end justify-between gap-4 border-b border-gold/15 pb-4">
                   <h2 className="text-2xl font-semibold text-white">
                     {group.title}
                   </h2>
-                  <p className="text-xs uppercase tracking-[0.22em] text-gold">
+                  <p className="border border-gold/25 bg-gold/10 px-3 py-1 text-xs uppercase tracking-[0.22em] text-gold">
                     {perfumes.length}
                   </p>
                 </div>
 
-                <div className="grid gap-3">
+                <div className="grid gap-4">
                   {perfumes.length === 0 ? (
                     <article className="premium-surface p-5">
                       <p className="text-sm text-stone-500">
@@ -80,21 +117,15 @@ export default async function DisponibilidadePage() {
                     </article>
                   ) : (
                     perfumes.map((perfume) => (
-                      <article key={perfume.slug} className="premium-surface p-5">
+                      <article
+                        key={perfume.slug}
+                        className="border border-gold/20 bg-[linear-gradient(145deg,rgba(216,183,106,0.10),rgba(8,7,5,0.96)_42%,rgba(3,3,3,1))] p-4 transition hover:border-gold/50"
+                      >
                         <div className="flex gap-4">
-                          {perfume.imageUrl || perfume.conceptImageUrl ? (
-                            <div className="h-16 w-16 shrink-0 overflow-hidden rounded border border-gold/20 bg-black/40">
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={perfume.imageUrl || perfume.conceptImageUrl}
-                                alt={perfume.name}
-                                onError={(event) => {
-                                  event.currentTarget.style.display = "none";
-                                }}
-                                className="h-full w-full object-contain p-1.5"
-                              />
-                            </div>
-                          ) : null}
+                          <PerfumeThumb
+                            src={perfume.imageUrl || perfume.conceptImageUrl}
+                            alt={perfume.name}
+                          />
                           <div className="min-w-0">
                             <p className="text-xs uppercase tracking-[0.22em] text-gold/80">
                               {perfume.collection}
@@ -102,15 +133,34 @@ export default async function DisponibilidadePage() {
                             <h3 className="mt-3 text-xl font-semibold uppercase tracking-[0.08em] text-white">
                               {perfume.name}
                             </h3>
+                            <p className="mt-2 text-sm text-stone-400">
+                              {perfume.family}
+                            </p>
                           </div>
                         </div>
                         <div className="mt-4 flex flex-wrap gap-2 text-xs text-stone-300">
-                          <span className="border border-white/10 px-3 py-1">
+                          <span className="border border-white/10 bg-black/30 px-3 py-1">
                             {formatPrice(perfume.price)}
                           </span>
-                          <span className="border border-white/10 px-3 py-1 text-gold-light">
+                          <span className="border border-gold/25 bg-gold/10 px-3 py-1 text-gold-light">
                             {availabilityLabels[perfume.availabilityStatus]}
                           </span>
+                        </div>
+                        <div className="mt-4 flex flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
+                          <Link
+                            href={`/perfumes/${perfume.slug}`}
+                            className="inline-flex min-h-10 flex-1 items-center justify-center rounded-full bg-gold px-4 text-xs font-semibold uppercase tracking-[0.14em] text-black transition hover:bg-gold-light"
+                          >
+                            Ver detalhes
+                          </Link>
+                          <a
+                            href={createWhatsAppLink(perfume.whatsappMessage)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex min-h-10 flex-1 items-center justify-center rounded-full border border-gold/45 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold-light hover:bg-gold/10"
+                          >
+                            WhatsApp
+                          </a>
                         </div>
                       </article>
                     ))
