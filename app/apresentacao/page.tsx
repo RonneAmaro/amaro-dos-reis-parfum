@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createWhatsAppLink } from "@/lib/whatsapp";
 
 const catalogWhatsAppHref = createWhatsAppLink(
-  "Ola! Quero conhecer o catalogo premium da Amaro dos Reis Parfum."
+  "Ola! Quero conhecer o catalogo premium da AMAROdosREIS Parfum."
 );
 
 const choiceCards = [
@@ -68,7 +68,7 @@ export default function ApresentacaoPage() {
         <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[1fr_0.72fr] lg:items-center">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.36em] text-gold">
-              Amaro dos Reis Parfum
+              AMAROdosREIS Parfum
             </p>
             <h1 className="mt-5 max-w-4xl text-4xl font-semibold uppercase leading-tight text-white sm:text-6xl">
               Perfume e presenca.
@@ -187,7 +187,7 @@ export default function ApresentacaoPage() {
               Por que escolher
             </p>
             <h2 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">
-              Por que escolher Amaro dos Reis Parfum?
+              Por que escolher AMAROdosREIS Parfum?
             </h2>
           </div>
           <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

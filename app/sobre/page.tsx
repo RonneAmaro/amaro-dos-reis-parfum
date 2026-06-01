@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createWhatsAppLink } from "@/lib/whatsapp";
 
 const storyWhatsAppHref = createWhatsAppLink(
-  "Ola! Quero conhecer as fragrancias da Amaro dos Reis Parfum."
+  "Ola! Quero conhecer as fragrancias da AMAROdosREIS Parfum."
 );
 
 const timeline = [
@@ -19,7 +19,7 @@ const timeline = [
     text: "No comeco, os primeiros componentes foram comprados para fabricar perfumes de uso pessoal. Entao as pessoas sentiram, elogiaram, perguntaram qual era a fragrancia e comecaram a pedir para que ele fizesse para elas tambem.",
   },
   {
-    title: "Amaro dos Reis Parfum",
+    title: "AMAROdosREIS Parfum",
     text: "O que nasceu como curiosidade ganhou forma, nome e proposito. Desde 2019, a marca vem sendo construida passo a passo para oferecer fragrancias marcantes, elegantes e acessiveis, com identidade propria e pequenos lotes.",
   },
 ];
@@ -42,7 +42,7 @@ export default function SobrePage() {
               Desde 2019
             </p>
             <h1 className="mt-6 text-4xl font-semibold uppercase leading-tight text-white sm:text-6xl">
-              Nossa historia
+              AMAROdosREIS Parfum
             </h1>
             <p className="mt-4 text-2xl font-semibold text-gold-light">
               De sonho a realidade

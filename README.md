@@ -1,6 +1,14 @@
-# AMARO DOS REIS PARFUM
+# AMAROdosREIS Parfum
 
 Site em Next.js para catalogo publico da Amaro dos Reis Parfum.
+
+## Identidade da marca
+
+- Nome visual principal: AMAROdosREIS Parfum
+- Uso institucional/narrativo: Amaro dos Reis Parfum
+- Logo oficial: `public/logo-amaro-parfum.png`
+- Favicon/icone oficial: `public/amaro-parfum-icon.svg`
+- Fallback PNG: `public/favicon-amaro.png`
 
 ## Rodar localmente
 
@@ -50,8 +58,9 @@ usuario existir no Supabase Auth. Veja o passo a passo em
 
 ## Favicon e identidade visual
 
-O favicon oficial da marca esta em `public/favicon-amaro.png` e e priorizado
-nos metadados do Next.js.
+O favicon/icone oficial da marca esta em `public/amaro-parfum-icon.svg` e e
+priorizado nos metadados do Next.js. O fallback PNG esta em
+`public/favicon-amaro.png`.
 
 Se o favicon nao aparecer no navegador, teste `Ctrl+F5`, uma aba anonima ou
 limpe o cache do navegador, porque favicons costumam ficar armazenados por mais

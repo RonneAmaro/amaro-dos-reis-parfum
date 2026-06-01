@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createWhatsAppLink } from "@/lib/whatsapp";
 
 const whatsappHref = createWhatsAppLink(
-  "Olá! Quero conhecer os perfumes da Amaro dos Reis Parfum."
+  "Ola! Quero conhecer os perfumes da AMAROdosREIS Parfum."
 );
 const isWhatsAppConfigured = whatsappHref !== "#";
 
@@ -16,7 +16,7 @@ export default function ContatoPage() {
             Contato
           </p>
           <h1 className="mt-5 text-4xl font-semibold uppercase leading-tight text-white sm:text-6xl">
-            Fale com a Amaro dos Reis Parfum.
+            Fale com a AMAROdosREIS Parfum.
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-8 text-stone-300">
             Atendimento local e producao em pequenos lotes. Consulte

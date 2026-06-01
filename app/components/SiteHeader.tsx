@@ -3,7 +3,7 @@ import Image from "next/image";
 import { createWhatsAppLink } from "@/lib/whatsapp";
 
 const whatsappHref = createWhatsAppLink(
-  "Olá! Quero conhecer os perfumes da Amaro dos Reis Parfum."
+  "Ola! Quero conhecer os perfumes da AMAROdosREIS Parfum."
 );
 
 export default function SiteHeader() {
@@ -16,7 +16,7 @@ export default function SiteHeader() {
         >
           <Image
             src="/logo-amaro-parfum.png"
-            alt="Amaro dos Reis Parfum"
+            alt="AMAROdosREIS Parfum"
             width={360}
             height={360}
             priority

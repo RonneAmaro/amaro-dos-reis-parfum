@@ -1,4 +1,4 @@
-# Fotos dos perfumes — Amaro dos Reis Parfum
+# Fotos dos perfumes - AMAROdosREIS Parfum
 
 Este guia ajuda a manter um padrao visual premium para as fotos dos perfumes no catalogo.
 

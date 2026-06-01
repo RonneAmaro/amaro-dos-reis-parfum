@@ -12,7 +12,7 @@ const statusGroups: { status: AvailabilityStatus; title: string }[] = [
 ];
 
 const whatsappHref = createWhatsAppLink(
-  "Ola! Quero consultar a disponibilidade dos perfumes da Amaro dos Reis Parfum."
+  "Ola! Quero consultar a disponibilidade dos perfumes da AMAROdosREIS Parfum."
 );
 
 function formatPrice(value: number) {
@@ -37,7 +37,7 @@ export default async function DisponibilidadePage() {
             Disponibilidade e encomendas
           </h1>
           <p className="mt-6 max-w-3xl text-lg leading-9 text-stone-300">
-            A Amaro dos Reis Parfum trabalha com producao em pequenos lotes.
+            A AMAROdosREIS Parfum trabalha com producao em pequenos lotes.
             Algumas fragrancias podem estar disponiveis, em poucas unidades ou
             sob encomenda. Antes de finalizar o pedido, consulte
             disponibilidade pelo WhatsApp.

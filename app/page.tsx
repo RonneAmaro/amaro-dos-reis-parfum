@@ -2,11 +2,11 @@ import Link from "next/link";
 import { createWhatsAppLink } from "@/lib/whatsapp";
 
 const discoveryWhatsAppHref = createWhatsAppLink(
-  "Ola! Quero conhecer os perfumes da Amaro dos Reis Parfum."
+  "Ola! Quero conhecer os perfumes da AMAROdosREIS Parfum."
 );
 
 const curationWhatsAppHref = createWhatsAppLink(
-  "Ola! Quero ajuda para escolher minha fragrancia Amaro dos Reis Parfum."
+  "Ola! Quero ajuda para escolher minha fragrancia AMAROdosREIS Parfum."
 );
 
 const collections = [
@@ -95,7 +95,7 @@ export default function Home() {
               Perfumaria autoral premium
             </p>
             <h1 className="text-4xl font-semibold uppercase leading-tight text-white sm:text-6xl lg:text-7xl">
-              Amaro dos Reis Parfum
+              AMAROdosREIS Parfum
             </h1>
             <p className="mt-6 max-w-2xl text-base leading-8 text-stone-300 sm:text-xl">
               Fragrancias autorais inspiradas em grandes referencias
@@ -289,7 +289,7 @@ export default function Home() {
               Por que escolher
             </p>
             <h2 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">
-              Por que escolher Amaro dos Reis Parfum?
+              Por que escolher AMAROdosREIS Parfum?
             </h2>
           </div>
           <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -86,7 +86,7 @@ function PerfumeImageFrame({
           className={`flex ${className} flex-col items-center justify-center bg-[radial-gradient(circle_at_center,rgba(216,183,106,0.16),transparent_58%)] px-6 text-center`}
         >
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-gold">
-            Amaro dos Reis Parfum
+            AMAROdosREIS Parfum
           </p>
           <p className="mt-3 text-sm uppercase tracking-[0.24em] text-stone-500">
             Imagem em breve
@@ -288,7 +288,7 @@ export default async function PerfumePage({
               rel="noreferrer"
               className="inline-flex min-h-12 items-center justify-center rounded-full bg-gold px-8 text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-gold-light"
             >
-              Pedir pelo WhatsApp
+              Consultar disponibilidade na AMAROdosREIS Parfum
             </a>
             <Link
               href="/catalogo"

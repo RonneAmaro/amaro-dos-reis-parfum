@@ -198,7 +198,7 @@ export function CatalogClient({ perfumes }: { perfumes: PublicPerfume[] }) {
                     ) : (
                       <div className="flex aspect-[4/3] flex-col items-center justify-center bg-[radial-gradient(circle_at_center,rgba(216,183,106,0.16),transparent_58%)] px-6 text-center">
                         <p className="text-xs font-semibold uppercase tracking-[0.3em] text-gold">
-                          Amaro dos Reis Parfum
+                          AMAROdosREIS Parfum
                         </p>
                         <p className="mt-3 text-sm uppercase tracking-[0.24em] text-stone-500">
                           Imagem em breve

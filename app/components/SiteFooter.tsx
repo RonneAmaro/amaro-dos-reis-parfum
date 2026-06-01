@@ -3,7 +3,7 @@ import Image from "next/image";
 import { createWhatsAppLink } from "@/lib/whatsapp";
 
 const whatsappHref = createWhatsAppLink(
-  "Olá! Quero conhecer os perfumes da Amaro dos Reis Parfum."
+  "Ola! Quero conhecer os perfumes da AMAROdosREIS Parfum."
 );
 
 export default function SiteFooter() {
@@ -13,7 +13,7 @@ export default function SiteFooter() {
         <div>
           <Image
             src="/logo-amaro-parfum.png"
-            alt="Amaro dos Reis Parfum"
+            alt="AMAROdosREIS Parfum"
             width={160}
             height={160}
             className="h-16 w-auto object-contain sm:h-20"
@@ -60,7 +60,7 @@ export default function SiteFooter() {
       <div className="mx-auto mt-10 max-w-7xl border-t border-white/10 pt-6 text-xs leading-6">
         <p>
           As referencias olfativas indicam inspiracoes de estilo e familia
-          olfativa. Amaro dos Reis Parfum e uma marca independente.
+          olfativa. AMAROdosREIS Parfum e uma marca independente.
         </p>
       </div>
     </footer>
