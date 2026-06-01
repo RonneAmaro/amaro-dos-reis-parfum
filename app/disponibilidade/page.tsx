@@ -4,7 +4,13 @@ import {
   type AvailabilityStatus,
 } from "@/lib/perfumes";
 import { getPublicPerfumes } from "@/lib/public-perfumes";
-import { createWhatsAppLink } from "@/lib/whatsapp";
+import {
+  createCatalogMessage,
+  createLocalDeliveryMessage,
+  createPerfumeAvailabilityMessage,
+  createPerfumeRecommendationMessage,
+  createWhatsAppLink,
+} from "@/lib/whatsapp";
 
 const statusGroups: { status: AvailabilityStatus; title: string }[] = [
   { status: "available", title: "Disponiveis" },
@@ -12,9 +18,11 @@ const statusGroups: { status: AvailabilityStatus; title: string }[] = [
   { status: "on_order", title: "Sob encomenda" },
 ];
 
-const whatsappHref = createWhatsAppLink(
-  "Ola! Quero consultar a disponibilidade dos perfumes da AMAROdosREIS Parfum."
+const whatsappHref = createWhatsAppLink(createCatalogMessage());
+const recommendationHref = createWhatsAppLink(
+  createPerfumeRecommendationMessage()
 );
+const localDeliveryHref = createWhatsAppLink(createLocalDeliveryMessage());
 
 function formatPrice(value: number) {
   return new Intl.NumberFormat("pt-BR", {
@@ -74,19 +82,35 @@ export default async function DisponibilidadePage() {
             Disponibilidade e encomendas
           </h1>
           <p className="mt-6 max-w-3xl text-lg leading-9 text-stone-300">
-            A AMAROdosREIS Parfum trabalha com producao em pequenos lotes.
-            Algumas fragrancias podem estar disponiveis, em poucas unidades ou
-            sob encomenda. Antes de finalizar o pedido, consulte
-            disponibilidade pelo WhatsApp.
+            A producao e feita em pequenos lotes. Algumas fragrancias podem
+            estar disponiveis, em poucas unidades ou sob encomenda.
           </p>
-          <a
-            href={whatsappHref}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-9 inline-flex min-h-12 items-center justify-center rounded-full bg-gold px-8 text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-gold-light"
-          >
-            Consultar no WhatsApp
-          </a>
+          <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+            <a
+              href={whatsappHref}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-12 items-center justify-center rounded-full bg-gold px-8 text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-gold-light"
+            >
+              Consultar disponibilidade pelo WhatsApp
+            </a>
+            <a
+              href={recommendationHref}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-12 items-center justify-center rounded-full border border-gold/45 px-8 text-sm font-semibold uppercase tracking-[0.18em] text-gold-light transition hover:border-gold-light hover:bg-gold/10"
+            >
+              Quero ajuda para escolher
+            </a>
+            <a
+              href={localDeliveryHref}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-12 items-center justify-center rounded-full border border-gold/45 px-8 text-sm font-semibold uppercase tracking-[0.18em] text-gold-light transition hover:border-gold-light hover:bg-gold/10"
+            >
+              Entrega local
+            </a>
+          </div>
         </div>
       </section>
 
@@ -154,12 +178,14 @@ export default async function DisponibilidadePage() {
                             Ver detalhes
                           </Link>
                           <a
-                            href={createWhatsAppLink(perfume.whatsappMessage)}
+                            href={createWhatsAppLink(
+                              createPerfumeAvailabilityMessage(perfume.name)
+                            )}
                             target="_blank"
                             rel="noreferrer"
                             className="inline-flex min-h-10 flex-1 items-center justify-center rounded-full border border-gold/45 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold-light hover:bg-gold/10"
                           >
-                            WhatsApp
+                            Consultar este perfume
                           </a>
                         </div>
                       </article>

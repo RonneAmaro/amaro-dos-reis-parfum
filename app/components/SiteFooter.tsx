@@ -1,10 +1,11 @@
 import Link from "next/link";
 import Image from "next/image";
-import { createWhatsAppLink } from "@/lib/whatsapp";
+import {
+  createGeneralContactMessage,
+  createWhatsAppLink,
+} from "@/lib/whatsapp";
 
-const whatsappHref = createWhatsAppLink(
-  "Ola! Quero conhecer os perfumes da AMAROdosREIS Parfum."
-);
+const whatsappHref = createWhatsAppLink(createGeneralContactMessage());
 
 export default function SiteFooter() {
   return (

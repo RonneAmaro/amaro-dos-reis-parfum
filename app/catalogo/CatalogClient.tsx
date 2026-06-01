@@ -7,7 +7,13 @@ import {
   lineLabels,
 } from "@/lib/perfumes";
 import { type PublicPerfume } from "@/lib/public-perfumes";
-import { createWhatsAppLink } from "@/lib/whatsapp";
+import {
+  createArabPremiumMessage,
+  createGiftRecommendationMessage,
+  createPerfumeInterestMessage,
+  createPerfumeRecommendationMessage,
+  createWhatsAppLink,
+} from "@/lib/whatsapp";
 
 const filters = [
   "Todas",
@@ -118,6 +124,11 @@ function PerfumePlaceholder({ className = "aspect-[4/3]" }: { className?: string
 export function CatalogClient({ perfumes }: { perfumes: PublicPerfume[] }) {
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState("Todas");
+  const recommendationHref = createWhatsAppLink(
+    createPerfumeRecommendationMessage()
+  );
+  const giftHref = createWhatsAppLink(createGiftRecommendationMessage());
+  const arabPremiumHref = createWhatsAppLink(createArabPremiumMessage());
 
   const filteredPerfumes = useMemo(() => {
     const normalizedQuery = normalize(query.trim());
@@ -164,10 +175,28 @@ export function CatalogClient({ perfumes }: { perfumes: PublicPerfume[] }) {
 
       <section className="px-6 py-14 sm:px-10 lg:px-12">
         <div className="mx-auto max-w-7xl">
-          <div className="mb-8 premium-surface px-5 py-4 text-sm leading-7 text-stone-300">
-            Catalogo atualizado conforme disponibilidade e producao em pequenos
-            lotes. Consulte antes de finalizar o pedido para escolher com mais
-            seguranca.
+          <div className="mb-8 premium-surface grid gap-5 px-5 py-4 text-sm leading-7 text-stone-300 lg:grid-cols-[1fr_auto] lg:items-center">
+            <p>
+              Catalogo atualizado conforme disponibilidade e producao em
+              pequenos lotes. Consulte antes de finalizar o pedido para escolher
+              com mais seguranca.
+            </p>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <a
+                href={recommendationHref}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex min-h-11 items-center justify-center rounded-full bg-gold px-5 text-xs font-semibold uppercase tracking-[0.16em] text-black transition hover:bg-gold-light"
+              >
+                Quero ajuda para escolher
+              </a>
+              <Link
+                href="/disponibilidade"
+                className="inline-flex min-h-11 items-center justify-center rounded-full border border-gold/45 px-5 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold-light hover:bg-gold/10"
+              >
+                Ver disponibilidade
+              </Link>
+            </div>
           </div>
 
           <div className="mb-8 grid gap-4 lg:grid-cols-[0.82fr_1.18fr] lg:items-start">
@@ -364,26 +393,71 @@ export function CatalogClient({ perfumes }: { perfumes: PublicPerfume[] }) {
                   </p>
 
                   <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                    <Link
-                      href={`/perfumes/${perfume.slug}`}
-                      className="inline-flex min-h-11 flex-1 items-center justify-center rounded-full bg-gold px-5 text-xs font-semibold uppercase tracking-[0.16em] text-black transition hover:bg-gold-light"
-                    >
-                      Ver detalhes
-                    </Link>
                     <a
-                      href={createWhatsAppLink(perfume.whatsappMessage)}
+                      href={createWhatsAppLink(
+                        createPerfumeInterestMessage(perfume.name)
+                      )}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex min-h-11 flex-1 items-center justify-center rounded-full border border-gold/45 px-5 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold-light hover:bg-gold/10"
+                      className="inline-flex min-h-11 flex-1 items-center justify-center rounded-full bg-gold px-5 text-xs font-semibold uppercase tracking-[0.16em] text-black transition hover:bg-gold-light"
                     >
                       Pedir no WhatsApp
                     </a>
+                    <Link
+                      href={`/perfumes/${perfume.slug}`}
+                      className="inline-flex min-h-11 flex-1 items-center justify-center rounded-full border border-gold/45 px-5 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold-light hover:bg-gold/10"
+                    >
+                      Ver detalhes
+                    </Link>
                   </div>
                   </div>
                 </article>
               ))}
             </div>
           )}
+
+          <section className="mt-14 border border-gold/20 bg-[linear-gradient(135deg,rgba(216,183,106,0.14),rgba(0,0,0,0.74)_48%,rgba(8,7,5,0.96))] p-6 sm:p-10">
+            <div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.32em] text-gold">
+                  Curadoria direta
+                </p>
+                <h2 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">
+                  Nao sabe qual fragrancia escolher?
+                </h2>
+                <p className="mt-5 max-w-2xl leading-8 text-stone-400">
+                  Fale conosco e receba uma indicacao de acordo com seu estilo,
+                  ocasiao e preferencia olfativa.
+                </p>
+              </div>
+              <div className="flex flex-col gap-3">
+                <a
+                  href={recommendationHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex min-h-11 items-center justify-center rounded-full bg-gold px-6 text-xs font-semibold uppercase tracking-[0.16em] text-black transition hover:bg-gold-light"
+                >
+                  Receber indicacao
+                </a>
+                <a
+                  href={giftHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-gold/45 px-6 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold-light hover:bg-gold/10"
+                >
+                  Comprar para presente
+                </a>
+                <a
+                  href={arabPremiumHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-gold/45 px-6 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold-light hover:bg-gold/10"
+                >
+                  Conhecer Linha Arabe Premium
+                </a>
+              </div>
+            </div>
+          </section>
         </div>
       </section>
     </main>

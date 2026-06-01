@@ -1,8 +1,11 @@
 import Link from "next/link";
-import { createWhatsAppLink } from "@/lib/whatsapp";
+import {
+  createPerfumeRecommendationMessage,
+  createWhatsAppLink,
+} from "@/lib/whatsapp";
 
-const catalogWhatsAppHref = createWhatsAppLink(
-  "Ola! Quero conhecer o catalogo premium da AMAROdosREIS Parfum."
+const recommendationWhatsAppHref = createWhatsAppLink(
+  createPerfumeRecommendationMessage()
 );
 
 const choiceCards = [
@@ -206,11 +209,15 @@ export default function ApresentacaoPage() {
       <section className="px-6 py-20 sm:px-10 lg:px-12">
         <div className="mx-auto max-w-4xl text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.32em] text-gold">
-            Sua proxima fragrancia
+            Escolha com ajuda
           </p>
           <h2 className="mt-5 text-3xl font-semibold text-white sm:text-5xl">
-            Descubra a fragrancia que combina com sua presenca.
+            Receba uma indicacao personalizada.
           </h2>
+          <p className="mx-auto mt-5 max-w-2xl leading-8 text-stone-400">
+            Se voce ainda nao sabe qual fragrancia combina com seu estilo, fale
+            conosco e receba uma indicacao personalizada.
+          </p>
           <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
             <Link
               href="/catalogo"
@@ -219,12 +226,12 @@ export default function ApresentacaoPage() {
               Ver catalogo
             </Link>
             <a
-              href={catalogWhatsAppHref}
+              href={recommendationWhatsAppHref}
               target="_blank"
               rel="noreferrer"
               className="inline-flex min-h-12 items-center justify-center rounded-full border border-gold/45 px-8 text-sm font-semibold uppercase tracking-[0.18em] text-gold-light transition hover:border-gold-light hover:bg-gold/10"
             >
-              Falar no WhatsApp
+              Receber indicacao pelo WhatsApp
             </a>
           </div>
         </div>

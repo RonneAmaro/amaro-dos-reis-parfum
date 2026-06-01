@@ -1,12 +1,13 @@
 import Link from "next/link";
-import { createWhatsAppLink } from "@/lib/whatsapp";
+import {
+  createGeneralContactMessage,
+  createPerfumeRecommendationMessage,
+  createWhatsAppLink,
+} from "@/lib/whatsapp";
 
-const discoveryWhatsAppHref = createWhatsAppLink(
-  "Ola! Quero conhecer os perfumes da AMAROdosREIS Parfum."
-);
-
+const discoveryWhatsAppHref = createWhatsAppLink(createGeneralContactMessage());
 const curationWhatsAppHref = createWhatsAppLink(
-  "Ola! Quero ajuda para escolher minha fragrancia AMAROdosREIS Parfum."
+  createPerfumeRecommendationMessage()
 );
 
 const collections = [
@@ -355,21 +356,28 @@ export default function Home() {
             Sua proxima fragrancia
           </p>
           <h2 className="mt-5 text-3xl font-semibold text-white sm:text-5xl">
-            Consulte a disponibilidade e receba uma recomendacao direta para o
-            seu estilo.
+            Pronto para encontrar sua assinatura olfativa?
           </h2>
           <p className="mx-auto mt-5 max-w-2xl leading-8 text-stone-400">
-            Conte como voce pretende usar a fragrancia e indicamos as melhores
-            opcoes entre a Linha Tradicional e a Linha Arabe Premium.
+            Fale diretamente conosco e descubra qual fragrancia combina com sua
+            presenca, ocasiao e estilo.
           </p>
-          <a
-            href={curationWhatsAppHref}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-9 inline-flex min-h-12 items-center justify-center rounded-full bg-gold px-8 text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-gold-light"
-          >
-            Falar no WhatsApp
-          </a>
+          <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
+            <Link
+              href="/catalogo"
+              className="inline-flex min-h-12 items-center justify-center rounded-full bg-gold px-8 text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-gold-light"
+            >
+              Ver catalogo
+            </Link>
+            <a
+              href={curationWhatsAppHref}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-12 items-center justify-center rounded-full border border-gold/45 px-8 text-sm font-semibold uppercase tracking-[0.18em] text-gold-light transition hover:border-gold-light hover:bg-gold/10"
+            >
+              Pedir indicacao no WhatsApp
+            </a>
+          </div>
         </div>
       </section>
     </main>

@@ -1,9 +1,42 @@
 import Link from "next/link";
-import { createWhatsAppLink } from "@/lib/whatsapp";
+import {
+  createArabPremiumMessage,
+  createCatalogMessage,
+  createDeliveryQuestionMessage,
+  createGiftRecommendationMessage,
+  createPerfumeRecommendationMessage,
+  createWhatsAppLink,
+} from "@/lib/whatsapp";
 
-const whatsappHref = createWhatsAppLink(
-  "Ola! Quero conhecer os perfumes da AMAROdosREIS Parfum."
-);
+const contactOptions = [
+  {
+    title: "Quero conhecer o catalogo",
+    text: "Veja as fragrancias de 50ml, linhas e valores antes de escolher.",
+    message: createCatalogMessage(),
+  },
+  {
+    title: "Quero ajuda para escolher",
+    text: "Receba uma indicacao de acordo com estilo, ocasiao e presenca.",
+    message: createPerfumeRecommendationMessage(),
+  },
+  {
+    title: "Quero comprar para presente",
+    text: "Encontre uma fragrancia elegante para transformar o presente.",
+    message: createGiftRecommendationMessage(),
+  },
+  {
+    title: "Quero saber sobre entrega",
+    text: "Consulte forma de entrega, atendimento local e sua regiao.",
+    message: createDeliveryQuestionMessage(),
+  },
+  {
+    title: "Quero conhecer a Linha Arabe Premium",
+    text: "Perfumes orientais, intensos e envolventes da linha premium.",
+    message: createArabPremiumMessage(),
+  },
+];
+
+const whatsappHref = createWhatsAppLink(createCatalogMessage());
 const isWhatsAppConfigured = whatsappHref !== "#";
 
 export default function ContatoPage() {
@@ -19,8 +52,8 @@ export default function ContatoPage() {
             Fale com a AMAROdosREIS Parfum.
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-8 text-stone-300">
-            Atendimento local e producao em pequenos lotes. Consulte
-            disponibilidade das fragrancias.
+            Atendimento local, producao em pequenos lotes, perfumes 50ml, Linha
+            Tradicional e Linha Arabe Premium.
           </p>
 
           <div className="mt-10 flex flex-col gap-3 sm:flex-row">
@@ -45,6 +78,41 @@ export default function ContatoPage() {
               WhatsApp será configurado em breve.
             </p>
           ) : null}
+        </div>
+      </section>
+
+      <section className="px-6 py-16 sm:px-10 lg:px-12">
+        <div className="mx-auto max-w-7xl">
+          <div className="max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.32em] text-gold">
+              Atendimento direto
+            </p>
+            <h2 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">
+              Escolha como deseja falar conosco.
+            </h2>
+          </div>
+
+          <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            {contactOptions.map((option) => (
+              <article key={option.title} className="premium-surface p-6">
+                <h3 className="text-xl font-semibold text-gold-light">
+                  {option.title}
+                </h3>
+                <p className="mt-4 min-h-20 leading-7 text-stone-400">
+                  {option.text}
+                </p>
+                <a
+                  href={createWhatsAppLink(option.message)}
+                  target={isWhatsAppConfigured ? "_blank" : undefined}
+                  rel={isWhatsAppConfigured ? "noreferrer" : undefined}
+                  aria-disabled={!isWhatsAppConfigured}
+                  className="mt-6 inline-flex min-h-11 w-full items-center justify-center rounded-full border border-gold/45 px-5 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold-light hover:bg-gold/10"
+                >
+                  WhatsApp
+                </a>
+              </article>
+            ))}
+          </div>
         </div>
       </section>
     </main>

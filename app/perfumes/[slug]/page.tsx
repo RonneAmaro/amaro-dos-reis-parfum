@@ -7,7 +7,12 @@ import {
   getPublicPerfumeBySlug,
   type PublicPerfume,
 } from "@/lib/public-perfumes";
-import { createWhatsAppLink } from "@/lib/whatsapp";
+import {
+  createDeliveryQuestionMessage,
+  createPerfumeAvailabilityMessage,
+  createPerfumeInterestMessage,
+  createWhatsAppLink,
+} from "@/lib/whatsapp";
 
 function formatPrice(value: number) {
   return new Intl.NumberFormat("pt-BR", {
@@ -143,6 +148,13 @@ export default async function PerfumePage({
   }
 
   const galleryImages = perfume.galleryImageUrls ?? [];
+  const interestHref = createWhatsAppLink(
+    createPerfumeInterestMessage(perfume.name)
+  );
+  const availabilityHref = createWhatsAppLink(
+    createPerfumeAvailabilityMessage(perfume.name)
+  );
+  const deliveryHref = createWhatsAppLink(createDeliveryQuestionMessage());
 
   return (
     <main className="min-h-screen bg-[#050505] text-stone-100">
@@ -192,7 +204,7 @@ export default async function PerfumePage({
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <a
-                href={createWhatsAppLink(perfume.whatsappMessage)}
+                href={interestHref}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex min-h-12 items-center justify-center rounded-full bg-gold px-8 text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-gold-light"
@@ -205,6 +217,24 @@ export default async function PerfumePage({
               >
                 Voltar ao catalogo
               </Link>
+            </div>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <a
+                href={availabilityHref}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex min-h-10 items-center justify-center rounded-full border border-gold/35 px-5 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold-light hover:bg-gold/10"
+              >
+                Consultar disponibilidade
+              </a>
+              <a
+                href={deliveryHref}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex min-h-10 items-center justify-center rounded-full border border-gold/35 px-5 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold-light hover:bg-gold/10"
+              >
+                Perguntar sobre entrega
+              </a>
             </div>
           </div>
 
@@ -295,6 +325,23 @@ export default async function PerfumePage({
               ))}
             </div>
           </div>
+
+          <div className="mt-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.32em] text-gold">
+              Antes de finalizar
+            </p>
+            <div className="mt-5 grid gap-4 md:grid-cols-3">
+              {[
+                "Consulte disponibilidade",
+                "Combine forma de entrega",
+                "Escolha a fragrancia ideal para seu momento",
+              ].map((item) => (
+                <article key={item} className="premium-surface p-5">
+                  <p className="text-lg font-semibold text-white">{item}</p>
+                </article>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 
@@ -352,7 +399,7 @@ export default async function PerfumePage({
             </h2>
           </div>
           <a
-            href={createWhatsAppLink(perfume.whatsappMessage)}
+            href={interestHref}
             target="_blank"
             rel="noreferrer"
             className="inline-flex min-h-12 w-fit items-center justify-center rounded-full bg-gold px-8 text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-gold-light"
