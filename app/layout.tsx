@@ -28,8 +28,12 @@ export const metadata: Metadata = {
         url: "/favicon-amaro.png",
         type: "image/png",
       },
+      {
+        url: "/favicon-amaro.ico",
+        type: "image/x-icon",
+      },
     ],
-    shortcut: "/amaro-parfum-icon.svg",
+    shortcut: "/favicon-amaro.ico",
     apple: "/favicon-amaro.png",
   },
 };
