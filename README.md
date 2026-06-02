@@ -114,3 +114,12 @@ NEXT_PUBLIC_WHATSAPP_NUMBER=55...
 
 Nunca commitar `.env.local`. O arquivo local pode conter configuracoes privadas
 ou de ambiente e deve ficar fora do repositorio.
+
+## Status do ambiente
+
+A rota `/status` serve para diagnostico visual antes de publicar ou validar a
+producao. Ela mostra apenas se as variaveis publicas estao configuradas, sem
+exibir valores ou segredos.
+
+Essa rota nao aparece no menu publico e deve ser usada para conferir ambiente,
+WhatsApp, identidade visual, rotas principais e proximos passos da Vercel.

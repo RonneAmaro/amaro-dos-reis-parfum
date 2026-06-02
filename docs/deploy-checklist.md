@@ -18,3 +18,6 @@
 - [ ] Upload de imagens testado
 - [ ] Sitemap abre em `/sitemap.xml`
 - [ ] Robots abre em `/robots.txt`
+- [ ] Acessar `/status` para conferência final
+- [ ] Depois da publicação, testar `/status` na URL da Vercel
+- [ ] Confirmar que `/status` está bloqueada no robots
