@@ -1,0 +1,20 @@
+# Checklist de publicação — AMAROdosREIS Parfum
+
+- [ ] Build local passou
+- [ ] Git status limpo
+- [ ] Push feito para GitHub
+- [ ] Projeto importado na Vercel
+- [ ] Variáveis configuradas
+- [ ] `NEXT_PUBLIC_SITE_URL` configurada
+- [ ] Supabase migrations aplicadas
+- [ ] Admin autorizado em `amaro_admin_members`
+- [ ] WhatsApp configurado
+- [ ] Favicon testado em aba anônima
+- [ ] Catálogo abre
+- [ ] Página de perfume abre
+- [ ] Botões WhatsApp funcionam
+- [ ] `/admin` não aparece no menu público
+- [ ] `/admin` exige login autorizado
+- [ ] Upload de imagens testado
+- [ ] Sitemap abre em `/sitemap.xml`
+- [ ] Robots abre em `/robots.txt`

@@ -1,5 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { createWhatsAppLink } from "@/lib/whatsapp";
+
+export const metadata: Metadata = {
+  title: "Nossa História | AMAROdosREIS Parfum",
+  description:
+    "Conheça a história da AMAROdosREIS Parfum, uma marca criada a partir da paixão por fragrâncias, presença e memória olfativa.",
+};
 
 const storyWhatsAppHref = createWhatsAppLink(
   "Ola! Quero conhecer as fragrancias da AMAROdosREIS Parfum."

@@ -1,8 +1,15 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import {
   createPerfumeRecommendationMessage,
   createWhatsAppLink,
 } from "@/lib/whatsapp";
+
+export const metadata: Metadata = {
+  title: "Apresentação | AMAROdosREIS Parfum",
+  description:
+    "Conheça a proposta da AMAROdosREIS Parfum: fragrâncias autorais, marcantes e acessíveis para quem deseja deixar presença.",
+};
 
 const recommendationWhatsAppHref = createWhatsAppLink(
   createPerfumeRecommendationMessage()

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import {
   availabilityLabels,
@@ -11,6 +12,12 @@ import {
   createPerfumeRecommendationMessage,
   createWhatsAppLink,
 } from "@/lib/whatsapp";
+
+export const metadata: Metadata = {
+  title: "Disponibilidade | AMAROdosREIS Parfum",
+  description:
+    "Consulte disponibilidade e encomendas de perfumes da AMAROdosREIS Parfum.",
+};
 
 const statusGroups: { status: AvailabilityStatus; title: string }[] = [
   { status: "available", title: "Disponiveis" },

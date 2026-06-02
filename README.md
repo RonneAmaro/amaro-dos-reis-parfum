@@ -94,3 +94,23 @@ Veja as orientacoes em [`docs/fotos-perfumes.md`](docs/fotos-perfumes.md).
 6. Se quiser habilitar os botoes de WhatsApp, configure a variavel opcional
    `NEXT_PUBLIC_WHATSAPP_NUMBER` nas variaveis de ambiente da Vercel.
 7. Nunca suba `.env.local` para o GitHub.
+
+## Publicação na Vercel
+
+1. Importe o repositorio no Vercel.
+2. Confirme o framework como `Next.js`.
+3. Configure o build command como `npm run build`.
+4. Cadastre as variaveis necessarias ou opcionais em `Settings > Environment Variables`.
+5. Depois de alterar qualquer variavel, faca um novo redeploy.
+
+Variaveis:
+
+```bash
+NEXT_PUBLIC_SITE_URL=https://seu-dominio-ou-vercel.app
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+NEXT_PUBLIC_WHATSAPP_NUMBER=55...
+```
+
+Nunca commitar `.env.local`. O arquivo local pode conter configuracoes privadas
+ou de ambiente e deve ficar fora do repositorio.

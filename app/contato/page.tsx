@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import {
   createArabPremiumMessage,
@@ -7,6 +8,12 @@ import {
   createPerfumeRecommendationMessage,
   createWhatsAppLink,
 } from "@/lib/whatsapp";
+
+export const metadata: Metadata = {
+  title: "Contato | AMAROdosREIS Parfum",
+  description:
+    "Fale com a AMAROdosREIS Parfum para consultar perfumes, disponibilidade, indicação de fragrância e entrega.",
+};
 
 const contactOptions = [
   {
