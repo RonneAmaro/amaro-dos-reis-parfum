@@ -95,8 +95,21 @@ export default function Home() {
             <p className="mb-5 text-xs font-semibold uppercase tracking-[0.36em] text-gold">
               Perfumaria autoral premium
             </p>
-            <h1 className="text-4xl font-semibold uppercase leading-tight text-white sm:text-6xl lg:text-7xl">
-              AMAROdosREIS Parfum
+            <h1 className="max-w-3xl leading-none">
+              <span className="block whitespace-nowrap bg-gradient-to-br from-white via-[#f7e8bd] to-gold bg-clip-text text-[clamp(2.6rem,14vw,5.4rem)] font-semibold tracking-normal text-transparent drop-shadow-[0_0_22px_rgba(216,183,106,0.18)] sm:text-[clamp(4.2rem,8vw,6.6rem)]">
+                AMARO
+                <span className="mx-1 align-[0.06em] text-[0.58em] font-medium text-gold-light drop-shadow-[0_0_14px_rgba(216,183,106,0.16)]">
+                  dos
+                </span>
+                REIS
+              </span>
+              <span className="mt-3 flex items-center justify-center gap-4 sm:mt-4 sm:justify-start">
+                <span className="h-px w-10 bg-gradient-to-r from-transparent to-gold/70 sm:w-16" />
+                <span className="text-[clamp(1.15rem,7vw,2rem)] font-light tracking-[0.34em] text-gold-light drop-shadow-[0_0_16px_rgba(216,183,106,0.16)] sm:text-[2.35rem]">
+                  Parfum
+                </span>
+                <span className="h-px w-10 bg-gradient-to-l from-transparent to-gold/70 sm:w-16" />
+              </span>
             </h1>
             <p className="mt-6 max-w-2xl text-base leading-8 text-stone-300 sm:text-xl">
               Fragrancias autorais inspiradas em grandes referencias
