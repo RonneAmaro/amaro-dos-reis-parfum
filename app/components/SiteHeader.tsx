@@ -47,6 +47,12 @@ export default function SiteHeader() {
           <Link href="/contato" className="transition hover:text-gold-light">
             Contato
           </Link>
+          <Link
+            href="/admin"
+            className="text-stone-500 transition hover:text-gold-light"
+          >
+            Painel
+          </Link>
           <a
             href={whatsappHref}
             target="_blank"

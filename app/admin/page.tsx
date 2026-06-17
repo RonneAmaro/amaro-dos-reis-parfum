@@ -1,375 +1,164 @@
 "use client";
 
+import Link from "next/link";
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
-import type { User } from "@supabase/supabase-js";
 import {
-  calculateCardFee,
-  DEFAULT_COST_SETTINGS,
-  getEstimatedUnitCost,
-  type LineType,
-} from "@/lib/costs";
-import {
-  lineLabels,
   perfumeCommerce,
   perfumeSlug,
-  type PerfumeLine,
+  type PerfumeCommerce,
 } from "@/lib/perfumes";
-import {
-  uploadPerfumeImage,
-  type PerfumeImageKind,
-} from "@/lib/perfume-image-upload";
-import { createSlugFromName, splitNotes } from "@/lib/perfume-utils";
-import {
-  BACKUP_INFO_STORAGE_KEY,
-  CUSTOMERS_STORAGE_KEY,
-  SALES_STORAGE_KEY,
-  STOCK_STORAGE_KEY,
-} from "@/lib/storage-keys";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase-browser";
-import { createWhatsAppLink } from "@/lib/whatsapp";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { SALES_STORAGE_KEY } from "@/lib/storage-keys";
 
-type StoredPaymentMethod = "dinheiro" | "pix" | "cartao" | "cartão" | "fiado";
-type PaymentMethod = "dinheiro" | "pix" | "cartão" | "fiado";
+const INVENTORY_STORAGE_KEY = "amaro_inventory_v1";
+const BACKUP_VERSION = "amaro_backup_v1";
+const LAST_SYNC_STORAGE_KEY = "amaro_last_sync_at";
+const SYNC_TOKEN_STORAGE_KEY = "amaro_admin_sync_token";
+
+type LineType = "tradicional" | "arabe";
+type PaymentMethod = "dinheiro" | "pix" | "cartao" | "fiado";
 type SaleStatus = "pago" | "pendente";
-type AdminRole = "owner" | "admin" | "seller";
-type AdminTab = "overview" | "sales" | "perfumes" | "alerts";
 type SaleFilter = "todos" | "pagos" | "pendentes";
-type PaymentFilter = "todos" | PaymentMethod;
-type CustomerFilter =
-  | "todos"
-  | "com_pendencia"
-  | "sem_pendencia"
-  | "com_telefone"
-  | "sem_telefone";
-type StockFilter =
-  | "todos"
-  | "em_estoque"
-  | "poucas"
-  | "sem_estoque"
-  | "traditional"
-  | "arabic_premium";
 
-export type Sale = {
+type Sale = {
   id: string;
   customerName: string;
   perfumeSlug: string;
   perfumeName: string;
-  lineType: PerfumeLine;
+  lineType: LineType;
   unitPrice: number;
-  costPrice?: number;
-  quantity: number;
-  paymentMethod: StoredPaymentMethod;
-  status: SaleStatus;
-  notes: string;
-  createdAt: string;
-  paidAt?: string;
-  dueDate?: string;
-  customerPhone?: string;
-};
-
-type StockItem = {
-  perfumeSlug: string;
-  quantity: number;
-  minQuantity: number;
-  updatedAt: string;
-};
-
-type Customer = {
-  id: string;
-  name: string;
-  phone?: string;
-  notes?: string;
-  createdAt: string;
-  updatedAt?: string;
-};
-
-type CustomerForm = {
-  name: string;
-  phone: string;
-  notes: string;
-};
-
-type BackupInfo = {
-  lastBackupAt: string;
-};
-
-type FullBackup = {
-  app: "Amaro dos Reis Parfum";
-  version: 1;
-  createdAt: string;
-  storageKeys: {
-    sales: typeof SALES_STORAGE_KEY;
-    stock: typeof STOCK_STORAGE_KEY;
-    customers: typeof CUSTOMERS_STORAGE_KEY;
-  };
-  data: {
-    sales: Sale[];
-    stock: Record<string, StockItem>;
-    customers: Customer[];
-  };
-};
-
-type SaleForm = {
-  customerId: string;
-  customerName: string;
-  perfumeSlug: string;
-  lineType: PerfumeLine;
+  unitCost?: number;
+  estimatedProfit?: number;
   quantity: number;
   paymentMethod: PaymentMethod;
   status: SaleStatus;
   notes: string;
-  customerPhone: string;
-  dueDate: string;
+  createdAt: string;
+  paidAt?: string;
 };
 
-type PerfumeCategory = "masculino" | "feminino" | "unissex";
-type BottleType = "tradicional" | "arabe";
-type AvailabilityStatus = "available" | "limited" | "on_order";
-
-type PerfumeForm = {
-  name: string;
-  inspiration: string;
-  category: PerfumeCategory;
-  collection: string;
-  bottleType: BottleType;
-  price: string;
-  costPrice: string;
-  stockQuantity: string;
-  olfactiveFamily: string;
-  topNotes: string;
-  heartNotes: string;
-  baseNotes: string;
-  shortDescription: string;
-  longDescription: string;
-  tags: string;
-  imageUrl: string;
-  conceptImageUrl: string;
-  galleryImageUrls: string;
-  availabilityStatus: AvailabilityStatus;
-  isActive: boolean;
-};
-
-type AuthForm = {
-  email: string;
-  password: string;
-};
-
-type SupabaseSaleRow = {
-  id: string;
-  customer_name: string;
-  perfume_slug: string;
-  perfume_name: string;
-  line_type: "tradicional" | "arabe";
-  unit_price: number | string;
-  cost_price: number | string;
+type SaleForm = {
+  customerName: string;
+  perfumeSlug: string;
+  lineType: LineType;
   quantity: number;
-  payment_method: "dinheiro" | "pix" | "cartao" | "fiado";
+  paymentMethod: PaymentMethod;
   status: SaleStatus;
-  notes: string | null;
-  created_at: string;
-  paid_at: string | null;
-  due_date: string | null;
-  customer_phone: string | null;
+  notes: string;
 };
 
-type SupabasePerfumeRow = {
-  id: string;
-  slug: string;
-  name: string;
-  inspiration: string | null;
-  category: PerfumeCategory;
-  collection: string;
-  bottle_type: BottleType;
-  price: number | string;
-  cost_price: number | string;
-  stock_quantity: number;
-  olfactive_family: string | null;
-  top_notes: string | null;
-  heart_notes: string | null;
-  base_notes: string | null;
-  short_description: string | null;
-  long_description: string | null;
-  tags: string[] | null;
-  image_url: string | null;
-  concept_image_url: string | null;
-  gallery_image_urls: string[] | null;
-  availability_status: AvailabilityStatus;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
+type InventoryItem = {
+  perfumeSlug: string;
+  perfumeName: string;
+  lineType: LineType;
+  stockQuantity: number;
+  unitCost: number;
+  salePrice: number;
+  minimumStock: number;
+  updatedAt: string;
 };
 
-type AdminMemberRow = {
-  role: AdminRole;
-  is_active: boolean;
+type InventoryForm = {
+  perfumeSlug: string;
+  lineType: LineType;
+  stockQuantity: number;
+  unitCost: number;
+  salePrice: number;
+  minimumStock: number;
 };
+
+type BackupImport = {
+  backupDate?: string;
+  sales: Sale[];
+  inventory: InventoryItem[];
+};
+
+type SyncStatus = {
+  configured: boolean;
+  salesCount?: number;
+  inventoryCount?: number;
+  message?: string;
+};
+
+type PulledSyncData = {
+  sales: Sale[];
+  inventory: InventoryItem[];
+};
+
+type SyncAction = "" | "status" | "push" | "pull" | "restore";
+
+const lineOptions: { value: LineType; label: string; price: number }[] = [
+  { value: "tradicional", label: "Tradicional", price: 80 },
+  { value: "arabe", label: "Árabe Premium", price: 120 },
+];
+
+const paymentOptions: { value: PaymentMethod; label: string }[] = [
+  { value: "dinheiro", label: "Dinheiro" },
+  { value: "pix", label: "Pix" },
+  { value: "cartao", label: "Cartão" },
+  { value: "fiado", label: "Fiado / receber depois" },
+];
+
+const statusOptions: { value: SaleStatus; label: string }[] = [
+  { value: "pago", label: "Pago" },
+  { value: "pendente", label: "Pendente" },
+];
+
+const saleFilters: { value: SaleFilter; label: string }[] = [
+  { value: "todos", label: "Todos" },
+  { value: "pagos", label: "Pagos" },
+  { value: "pendentes", label: "Pendentes" },
+];
 
 const defaultPerfume = perfumeCommerce[0];
 
-const initialForm: SaleForm = {
-  customerId: "",
+const initialSaleForm: SaleForm = {
   customerName: "",
   perfumeSlug: perfumeSlug(defaultPerfume),
-  lineType: defaultPerfume.line,
+  lineType: getSuggestedLineType(defaultPerfume),
   quantity: 1,
   paymentMethod: "pix",
   status: "pago",
   notes: "",
-  customerPhone: "",
-  dueDate: "",
 };
 
-const initialPerfumeForm: PerfumeForm = {
-  name: "",
-  inspiration: "",
-  category: "unissex",
-  collection: "",
-  bottleType: "tradicional",
-  price: "80",
-  costPrice: "0",
-  stockQuantity: "0",
-  olfactiveFamily: "",
-  topNotes: "",
-  heartNotes: "",
-  baseNotes: "",
-  shortDescription: "",
-  longDescription: "",
-  tags: "",
-  imageUrl: "",
-  conceptImageUrl: "",
-  galleryImageUrls: "",
-  availabilityStatus: "limited",
-  isActive: true,
+const initialInventoryForm: InventoryForm = {
+  perfumeSlug: perfumeSlug(defaultPerfume),
+  lineType: getSuggestedLineType(defaultPerfume),
+  stockQuantity: 0,
+  unitCost: getDefaultUnitCost(getSuggestedLineType(defaultPerfume)),
+  salePrice: getLinePrice(getSuggestedLineType(defaultPerfume)),
+  minimumStock: 2,
 };
 
-const initialCustomerForm: CustomerForm = {
-  name: "",
-  phone: "",
-  notes: "",
-};
-
-const initialAuthForm: AuthForm = {
-  email: "",
-  password: "",
-};
-
-const paymentLabels: Record<PaymentMethod, string> = {
-  dinheiro: "Dinheiro",
-  pix: "Pix",
-  cartão: "Cartao",
-  fiado: "Fiado / receber depois",
-};
-
-const statusLabels: Record<SaleStatus, string> = {
-  pago: "Pago",
-  pendente: "Pendente",
-};
-
-function getLinePrice(lineType: PerfumeLine) {
-  return lineType === "arabic_premium" ? 120 : 80;
+function getSuggestedLineType(perfume: PerfumeCommerce): LineType {
+  return perfume.line === "arabic_premium" ? "arabe" : "tradicional";
 }
 
-function toCostLine(lineType: PerfumeLine | string): LineType {
-  return lineType === "arabic_premium" || lineType === "arabe"
-    ? "arabe"
-    : "tradicional";
+function getLinePrice(lineType: LineType) {
+  return lineType === "arabe" ? 120 : 80;
 }
 
-function normalizePaymentMethod(method: StoredPaymentMethod): PaymentMethod {
-  return method === "cartao" ? "cartão" : method;
+function getDefaultUnitCost(lineType: LineType) {
+  return lineType === "arabe" ? 41.4 : 24.75;
 }
 
-function toSupabaseLine(lineType: PerfumeLine): "tradicional" | "arabe" {
-  return lineType === "arabic_premium" ? "arabe" : "tradicional";
+function createId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function fromSupabaseLine(lineType: "tradicional" | "arabe"): PerfumeLine {
-  return lineType === "arabe" ? "arabic_premium" : "traditional";
-}
+function clampNumber(value: unknown, fallback = 0) {
+  const numberValue = Number(value);
 
-function toSupabasePaymentMethod(method: PaymentMethod) {
-  return method === "cartão" ? "cartao" : method;
-}
+  if (!Number.isFinite(numberValue)) {
+    return fallback;
+  }
 
-function mapSupabaseSale(row: SupabaseSaleRow): Sale {
-  return {
-    id: row.id,
-    customerName: row.customer_name,
-    perfumeSlug: row.perfume_slug,
-    perfumeName: row.perfume_name,
-    lineType: fromSupabaseLine(row.line_type),
-    unitPrice: Number(row.unit_price) || 0,
-    costPrice: Number(row.cost_price) || 0,
-    quantity: Math.max(1, Number(row.quantity) || 1),
-    paymentMethod: row.payment_method,
-    status: row.status,
-    notes: row.notes ?? "",
-    createdAt: row.created_at,
-    paidAt: row.paid_at ?? undefined,
-    dueDate: row.due_date ?? undefined,
-    customerPhone: row.customer_phone ?? undefined,
-  };
-}
-
-function mapPerfumeToForm(perfume: SupabasePerfumeRow): PerfumeForm {
-  return {
-    name: perfume.name,
-    inspiration: perfume.inspiration ?? "",
-    category: perfume.category,
-    collection: perfume.collection,
-    bottleType: perfume.bottle_type,
-    price: String(Number(perfume.price) || 0),
-    costPrice: String(Number(perfume.cost_price) || 0),
-    stockQuantity: String(Number(perfume.stock_quantity) || 0),
-    olfactiveFamily: perfume.olfactive_family ?? "",
-    topNotes: perfume.top_notes ?? "",
-    heartNotes: perfume.heart_notes ?? "",
-    baseNotes: perfume.base_notes ?? "",
-    shortDescription: perfume.short_description ?? "",
-    longDescription: perfume.long_description ?? "",
-    tags: (perfume.tags ?? []).join(", "),
-    imageUrl: perfume.image_url ?? "",
-    conceptImageUrl: perfume.concept_image_url ?? "",
-    galleryImageUrls: (perfume.gallery_image_urls ?? []).join("\n"),
-    availabilityStatus: perfume.availability_status,
-    isActive: perfume.is_active,
-  };
-}
-
-function saleProfit(sale: {
-  lineType: PerfumeLine | string;
-  unitPrice: number;
-  costPrice?: number;
-  quantity: number;
-  paymentMethod: StoredPaymentMethod;
-}) {
-  const unitPrice = Number(sale.unitPrice) || 0;
-  const quantity = Math.max(1, Number(sale.quantity) || 1);
-  const rawUnitCost = Number(sale.costPrice);
-  const unitCost =
-    sale.costPrice === undefined || !Number.isFinite(rawUnitCost)
-      ? getEstimatedUnitCost(toCostLine(sale.lineType), DEFAULT_COST_SETTINGS)
-      : Math.max(0, rawUnitCost);
-  const revenue = unitPrice * quantity;
-  const estimatedCost = unitCost * quantity;
-  const cardFee = calculateCardFee(
-    revenue,
-    normalizePaymentMethod(sale.paymentMethod),
-    DEFAULT_COST_SETTINGS
-  );
-  const grossProfit = revenue - estimatedCost;
-  const netProfit = grossProfit - cardFee;
-  const marginPercent = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
-
-  return {
-    revenue,
-    unitCost,
-    estimatedCost,
-    cardFee,
-    grossProfit,
-    netProfit,
-    marginPercent,
-  };
+  return Math.max(0, numberValue);
 }
 
 function formatCurrency(value: number) {
@@ -384,80 +173,240 @@ function formatPercent(value: number) {
 }
 
 function formatDate(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Data inválida";
+  }
+
   return new Intl.DateTimeFormat("pt-BR", {
     dateStyle: "short",
     timeStyle: "short",
-  }).format(new Date(value));
-}
-
-function formatDateOnly(value?: string) {
-  if (!value) {
-    return "Sem vencimento";
-  }
-
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-  }).format(new Date(`${value}T12:00:00`));
-}
-
-function daysBetweenDates(targetDate: string) {
-  const today = new Date();
-  const todayOnly = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    today.getDate()
-  );
-  const target = new Date(`${targetDate}T12:00:00`);
-  const targetOnly = new Date(
-    target.getFullYear(),
-    target.getMonth(),
-    target.getDate()
-  );
-
-  return Math.round(
-    (targetOnly.getTime() - todayOnly.getTime()) / (1000 * 60 * 60 * 24)
-  );
-}
-
-function describeDueDate(dueDate?: string) {
-  if (!dueDate) {
-    return "Sem vencimento definido";
-  }
-
-  const days = daysBetweenDates(dueDate);
-
-  if (days < 0) {
-    return `Venceu ha ${Math.abs(days)} dia${Math.abs(days) === 1 ? "" : "s"}`;
-  }
-
-  if (days === 0) {
-    return "Vence hoje";
-  }
-
-  return `Faltam ${days} dia${days === 1 ? "" : "s"}`;
-}
-
-function createCustomerWhatsAppLink(phone: string, message: string) {
-  const sanitizedPhone = phone.replace(/\D/g, "");
-
-  if (sanitizedPhone.length < 10) {
-    return "#";
-  }
-
-  return `https://wa.me/${sanitizedPhone}?text=${encodeURIComponent(message)}`;
-}
-
-function createId() {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }).format(date);
 }
 
 function escapeCsv(value: string | number) {
-  const text = String(value).replace(/"/g, '""');
-  return `"${text}"`;
+  return `"${String(value).replace(/"/g, '""')}"`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeLineType(value: unknown): LineType {
+  if (value === "arabe" || value === "arabic_premium") {
+    return "arabe";
+  }
+
+  return "tradicional";
+}
+
+function normalizePaymentMethod(value: unknown): PaymentMethod {
+  if (value === "dinheiro" || value === "pix" || value === "fiado") {
+    return value;
+  }
+
+  return "cartao";
+}
+
+function normalizeStatus(value: unknown): SaleStatus {
+  return value === "pendente" ? "pendente" : "pago";
+}
+
+function lineLabel(lineType: LineType) {
+  return lineType === "arabe" ? "Árabe Premium" : "Tradicional";
+}
+
+function getInventoryStatus(item: InventoryItem) {
+  if (item.stockQuantity <= 0) {
+    return "Sem estoque";
+  }
+
+  if (item.stockQuantity <= item.minimumStock) {
+    return "Baixo estoque";
+  }
+
+  return "Em estoque";
+}
+
+function inventoryStatusClass(status: string) {
+  if (status === "Em estoque") {
+    return "border-emerald-400/30 bg-emerald-400/10 text-emerald-300";
+  }
+
+  if (status === "Baixo estoque") {
+    return "border-gold/35 bg-gold/10 text-gold-light";
+  }
+
+  return "border-red-400/30 bg-red-400/10 text-red-300";
+}
+
+function getItemMargin(item: InventoryItem) {
+  if (item.salePrice <= 0) {
+    return 0;
+  }
+
+  return ((item.salePrice - item.unitCost) / item.salePrice) * 100;
+}
+
+function getSaleUnitCost(sale: Sale) {
+  return sale.unitCost ?? getDefaultUnitCost(sale.lineType);
+}
+
+function getSaleEstimatedProfit(sale: Sale) {
+  return (
+    sale.estimatedProfit ??
+    (sale.unitPrice - getSaleUnitCost(sale)) * sale.quantity
+  );
+}
+
+function normalizeSale(value: unknown): Sale | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const lineType = normalizeLineType(value.lineType);
+  const fallbackPerfume = perfumeCommerce.find(
+    (perfume) => perfumeSlug(perfume) === value.perfumeSlug
+  );
+  const quantity = Math.max(1, Number(value.quantity) || 1);
+  const unitPrice = Number(value.unitPrice) || getLinePrice(lineType);
+  const unitCost =
+    value.unitCost === undefined
+      ? getDefaultUnitCost(lineType)
+      : clampNumber(value.unitCost, getDefaultUnitCost(lineType));
+  const estimatedProfit =
+    value.estimatedProfit === undefined
+      ? (unitPrice - unitCost) * quantity
+      : Number(value.estimatedProfit) || 0;
+  const createdAt =
+    typeof value.createdAt === "string"
+      ? value.createdAt
+      : new Date().toISOString();
+  const paidAt = typeof value.paidAt === "string" ? value.paidAt : undefined;
+
+  return {
+    id: typeof value.id === "string" ? value.id : createId(),
+    customerName:
+      typeof value.customerName === "string" && value.customerName.trim()
+        ? value.customerName.trim()
+        : "Cliente sem nome",
+    perfumeSlug:
+      typeof value.perfumeSlug === "string" && value.perfumeSlug
+        ? value.perfumeSlug
+        : perfumeSlug(fallbackPerfume ?? defaultPerfume),
+    perfumeName:
+      typeof value.perfumeName === "string" && value.perfumeName.trim()
+        ? value.perfumeName.trim()
+        : fallbackPerfume?.name ?? defaultPerfume.name,
+    lineType,
+    unitPrice,
+    unitCost,
+    estimatedProfit,
+    quantity,
+    paymentMethod: normalizePaymentMethod(value.paymentMethod),
+    status: normalizeStatus(value.status),
+    notes: typeof value.notes === "string" ? value.notes : "",
+    createdAt,
+    paidAt,
+  };
+}
+
+function normalizeInventoryItem(value: unknown): InventoryItem | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const fallbackPerfume = perfumeCommerce.find(
+    (perfume) => perfumeSlug(perfume) === value.perfumeSlug
+  );
+  const lineType = normalizeLineType(
+    value.lineType ?? (fallbackPerfume ? getSuggestedLineType(fallbackPerfume) : "")
+  );
+  const perfumeName =
+    typeof value.perfumeName === "string" && value.perfumeName.trim()
+      ? value.perfumeName.trim()
+      : fallbackPerfume?.name ?? defaultPerfume.name;
+  const itemSlug =
+    typeof value.perfumeSlug === "string" && value.perfumeSlug
+      ? value.perfumeSlug
+      : perfumeSlug(fallbackPerfume ?? defaultPerfume);
+
+  return {
+    perfumeSlug: itemSlug,
+    perfumeName,
+    lineType,
+    stockQuantity: Math.floor(clampNumber(value.stockQuantity, 0)),
+    unitCost: clampNumber(value.unitCost, getDefaultUnitCost(lineType)),
+    salePrice: clampNumber(value.salePrice, getLinePrice(lineType)),
+    minimumStock: Math.floor(clampNumber(value.minimumStock, 2)),
+    updatedAt:
+      typeof value.updatedAt === "string"
+        ? value.updatedAt
+        : new Date().toISOString(),
+  };
+}
+
+function readSalesFromStorage() {
+  const storedSales = window.localStorage.getItem(SALES_STORAGE_KEY);
+
+  if (!storedSales) {
+    return [];
+  }
+
+  try {
+    const parsedSales = JSON.parse(storedSales) as unknown;
+
+    if (!Array.isArray(parsedSales)) {
+      return [];
+    }
+
+    return parsedSales
+      .map((sale) => normalizeSale(sale))
+      .filter((sale): sale is Sale => sale !== null);
+  } catch {
+    return [];
+  }
+}
+
+function readInventoryFromStorage() {
+  const storedInventory = window.localStorage.getItem(INVENTORY_STORAGE_KEY);
+
+  if (!storedInventory) {
+    return [];
+  }
+
+  try {
+    const parsedInventory = JSON.parse(storedInventory) as unknown;
+
+    if (!Array.isArray(parsedInventory)) {
+      return [];
+    }
+
+    return parsedInventory
+      .map((item) => normalizeInventoryItem(item))
+      .filter((item): item is InventoryItem => item !== null);
+  } catch {
+    return [];
+  }
+}
+
+function downloadCsv(filename: string, rows: Array<Array<string | number>>) {
+  const csv = rows
+    .map((row) => row.map((item) => escapeCsv(item)).join(","))
+    .join("\n");
+  const blob = new Blob([`\uFEFF${csv}`], {
+    type: "text/csv;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function downloadJson(filename: string, data: unknown) {
@@ -469,3974 +418,2046 @@ function downloadJson(filename: string, data: unknown) {
 
   link.href = url;
   link.download = filename;
+  document.body.appendChild(link);
   link.click();
+  link.remove();
   URL.revokeObjectURL(url);
 }
 
-function normalizeName(value: string) {
-  return value.trim().toLowerCase();
-}
+function normalizeBackup(value: unknown): BackupImport | null {
+  if (!isRecord(value)) {
+    return null;
+  }
 
-function defaultStockItem(slug: string): StockItem {
+  const version = value.backupVersion ?? value.version;
+
+  if (version !== BACKUP_VERSION) {
+    return null;
+  }
+
+  if (!Array.isArray(value.sales) || !Array.isArray(value.inventory)) {
+    return null;
+  }
+
+  const sales = value.sales
+    .map((sale) => normalizeSale(sale))
+    .filter((sale): sale is Sale => sale !== null);
+  const inventory = value.inventory
+    .map((item) => normalizeInventoryItem(item))
+    .filter((item): item is InventoryItem => item !== null);
+  const backupDate =
+    typeof value.backupDate === "string"
+      ? value.backupDate
+      : typeof value.createdAt === "string"
+        ? value.createdAt
+        : undefined;
+
   return {
-    perfumeSlug: slug,
-    quantity: 0,
-    minQuantity: 2,
-    updatedAt: "",
+    backupDate,
+    sales,
+    inventory,
   };
 }
 
-function stockStatus(item: StockItem) {
-  if (item.quantity <= 0) {
-    return "Sem estoque";
+async function copyTextToClipboard(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
   }
 
-  if (item.quantity <= item.minQuantity) {
-    return "Poucas unidades";
-  }
+  const textarea = document.createElement("textarea");
 
-  return "Em estoque";
-}
-
-function perfumeStockStatus(quantity: number) {
-  if (quantity <= 0) {
-    return "Sem estoque";
-  }
-
-  if (quantity <= 3) {
-    return "Baixo estoque";
-  }
-
-  return "Estoque ok";
-}
-
-function stockStatusClass(status: string) {
-  if (status === "Estoque ok" || status === "Em estoque") {
-    return "border-emerald-400/30 bg-emerald-400/10 text-emerald-300";
-  }
-
-  if (status === "Baixo estoque" || status === "Poucas unidades") {
-    return "border-gold/35 bg-gold/10 text-gold-light";
-  }
-
-  return "border-red-400/30 bg-red-400/10 text-red-300";
-}
-
-function bottleTypeLabel(type: BottleType) {
-  return type === "arabe" ? "Arabe Premium" : "Tradicional";
-}
-
-function splitImageUrls(value: string) {
-  return value
-    .split(/\r?\n/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function readLocalSales() {
-  const storedSales = window.localStorage.getItem(SALES_STORAGE_KEY);
-
-  if (!storedSales) {
-    return [];
-  }
-
-  try {
-    const parsedSales = JSON.parse(storedSales) as Sale[];
-    return Array.isArray(parsedSales) ? parsedSales : [];
-  } catch {
-    return [];
-  }
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
 }
 
 export default function AdminPage() {
   const [sales, setSales] = useState<Sale[]>([]);
-  const [form, setForm] = useState<SaleForm>(initialForm);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [customerForm, setCustomerForm] =
-    useState<CustomerForm>(initialCustomerForm);
-  const [customerMessage, setCustomerMessage] = useState("");
-  const [customerFilter, setCustomerFilter] = useState<CustomerFilter>("todos");
-  const [customerQuery, setCustomerQuery] = useState("");
-  const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
-  const [backupInfo, setBackupInfo] = useState<BackupInfo | null>(null);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [saleForm, setSaleForm] = useState<SaleForm>(initialSaleForm);
+  const [inventoryForm, setInventoryForm] =
+    useState<InventoryForm>(initialInventoryForm);
+  const [filter, setFilter] = useState<SaleFilter>("todos");
+  const [saleNotice, setSaleNotice] = useState("");
+  const [backupImport, setBackupImport] = useState<BackupImport | null>(null);
+  const [backupFileName, setBackupFileName] = useState("");
   const [backupMessage, setBackupMessage] = useState("");
-  const [statusFilter, setStatusFilter] = useState<SaleFilter>("todos");
-  const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("todos");
-  const [stock, setStock] = useState<Record<string, StockItem>>({});
-  const [stockFilter, setStockFilter] = useState<StockFilter>("todos");
-  const [stockWarning, setStockWarning] = useState("");
-  const [isStorageLoaded, setIsStorageLoaded] = useState(false);
-  const [isStockLoaded, setIsStockLoaded] = useState(false);
-  const [isCustomersLoaded, setIsCustomersLoaded] = useState(false);
-  const [authUser, setAuthUser] = useState<User | null>(null);
-  const [adminRole, setAdminRole] = useState<AdminRole | null>(null);
-  const [isAdminCheckLoading, setIsAdminCheckLoading] = useState(false);
-  const [authForm, setAuthForm] = useState<AuthForm>(initialAuthForm);
-  const [authMessage, setAuthMessage] = useState("");
-  const [salesMessage, setSalesMessage] = useState("");
-  const [isAuthLoading, setIsAuthLoading] = useState(isSupabaseConfigured);
-  const [isSupabaseLoading, setIsSupabaseLoading] = useState(false);
-  const [salesSource, setSalesSource] = useState<"local" | "supabase">("local");
-  const [activeTab, setActiveTab] = useState<AdminTab>("overview");
-  const [supabasePerfumes, setSupabasePerfumes] = useState<SupabasePerfumeRow[]>([]);
-  const [perfumeForm, setPerfumeForm] =
-    useState<PerfumeForm>(initialPerfumeForm);
-  const [editingPerfumeId, setEditingPerfumeId] = useState<string | null>(null);
-  const [perfumeMessage, setPerfumeMessage] = useState("");
-  const [isPerfumeLoading, setIsPerfumeLoading] = useState(false);
-  const [mainImageFile, setMainImageFile] = useState<File | null>(null);
-  const [conceptImageFile, setConceptImageFile] = useState<File | null>(null);
-  const [galleryImageFiles, setGalleryImageFiles] = useState<File[]>([]);
-  const [uploadingImageKind, setUploadingImageKind] =
-    useState<PerfumeImageKind | null>(null);
-  const [imageUploadMessage, setImageUploadMessage] = useState("");
-  const isDevelopment = process.env.NODE_ENV === "development";
-  const isAuthorizedAdmin = Boolean(adminRole);
-  const isSupabaseMode =
-    isSupabaseConfigured && Boolean(authUser) && isAuthorizedAdmin;
-  const canManagePerfumes =
-    !isSupabaseConfigured || adminRole === "owner" || adminRole === "admin";
-  const canManageSales =
-    !isSupabaseConfigured ||
-    adminRole === "owner" ||
-    adminRole === "admin" ||
-    adminRole === "seller";
-  const salePerfumeOptions = useMemo(() => {
-    if (isSupabaseMode && supabasePerfumes.length > 0) {
-      return supabasePerfumes
-        .filter((perfume) => perfume.is_active)
-        .map((perfume) => ({
-          slug: perfume.slug,
-          name: perfume.name,
-          lineType: fromSupabaseLine(perfume.bottle_type),
-          unitPrice: Number(perfume.price) || 0,
-          costPrice: Number(perfume.cost_price) || 0,
-          stockQuantity: Number(perfume.stock_quantity) || 0,
-          collection: perfume.collection,
-        }));
-    }
+  const [backupError, setBackupError] = useState("");
+  const [summaryCopyMessage, setSummaryCopyMessage] = useState("");
+  const [syncToken, setSyncToken] = useState("");
+  const [syncMessage, setSyncMessage] = useState("");
+  const [syncError, setSyncError] = useState("");
+  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
+  const [pulledSyncData, setPulledSyncData] =
+    useState<PulledSyncData | null>(null);
+  const [lastSyncAt, setLastSyncAt] = useState("");
+  const [syncAction, setSyncAction] = useState<SyncAction>("");
+  const [isSyncTokenLoaded, setIsSyncTokenLoaded] = useState(false);
+  const [isSalesLoaded, setIsSalesLoaded] = useState(false);
+  const [isInventoryLoaded, setIsInventoryLoaded] = useState(false);
+  const supabaseConfigured = isSupabaseConfigured();
 
-    return perfumeCommerce.map((perfume) => ({
-      slug: perfumeSlug(perfume),
-      name: perfume.name,
-      lineType: perfume.line,
-      unitPrice: getLinePrice(perfume.line),
-      costPrice: getEstimatedUnitCost(toCostLine(perfume.line), DEFAULT_COST_SETTINGS),
-      stockQuantity: stock[perfumeSlug(perfume)]?.quantity ?? 0,
-      collection: perfume.collection,
-    }));
-  }, [isSupabaseMode, stock, supabasePerfumes]);
   const selectedSalePerfume = useMemo(
     () =>
-      salePerfumeOptions.find((perfume) => perfume.slug === form.perfumeSlug) ??
-      salePerfumeOptions[0],
-    [form.perfumeSlug, salePerfumeOptions]
+      perfumeCommerce.find(
+        (perfume) => perfumeSlug(perfume) === saleForm.perfumeSlug
+      ) ?? defaultPerfume,
+    [saleForm.perfumeSlug]
   );
-  const unitPrice = selectedSalePerfume?.unitPrice ?? getLinePrice(form.lineType);
-  const unitCost =
-    selectedSalePerfume?.costPrice ??
-    getEstimatedUnitCost(toCostLine(form.lineType), DEFAULT_COST_SETTINGS);
-  const galleryPreviewUrls = useMemo(
-    () => splitImageUrls(perfumeForm.galleryImageUrls),
-    [perfumeForm.galleryImageUrls]
+  const selectedInventoryPerfume = useMemo(
+    () =>
+      perfumeCommerce.find(
+        (perfume) => perfumeSlug(perfume) === inventoryForm.perfumeSlug
+      ) ?? defaultPerfume,
+    [inventoryForm.perfumeSlug]
   );
-
-  useEffect(() => {
-    setSales(readLocalSales());
-    setIsStorageLoaded(true);
-  }, []);
-
-  useEffect(() => {
-    if (isStorageLoaded && salesSource === "local") {
-      window.localStorage.setItem(SALES_STORAGE_KEY, JSON.stringify(sales));
-    }
-  }, [isStorageLoaded, sales, salesSource]);
-
-  useEffect(() => {
-    const storedStock = window.localStorage.getItem(STOCK_STORAGE_KEY);
-
-    if (!storedStock) {
-      setIsStockLoaded(true);
-      return;
-    }
-
-    try {
-      const parsedStock = JSON.parse(storedStock) as Record<string, StockItem>;
-      setStock(parsedStock && typeof parsedStock === "object" ? parsedStock : {});
-    } catch {
-      setStock({});
-    } finally {
-      setIsStockLoaded(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isStockLoaded) {
-      window.localStorage.setItem(STOCK_STORAGE_KEY, JSON.stringify(stock));
-    }
-  }, [isStockLoaded, stock]);
-
-  useEffect(() => {
-    const storedCustomers = window.localStorage.getItem(CUSTOMERS_STORAGE_KEY);
-
-    if (!storedCustomers) {
-      setIsCustomersLoaded(true);
-      return;
-    }
-
-    try {
-      const parsedCustomers = JSON.parse(storedCustomers) as Customer[];
-      setCustomers(Array.isArray(parsedCustomers) ? parsedCustomers : []);
-    } catch {
-      setCustomers([]);
-    } finally {
-      setIsCustomersLoaded(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isCustomersLoaded) {
-      window.localStorage.setItem(
-        CUSTOMERS_STORAGE_KEY,
-        JSON.stringify(customers)
-      );
-    }
-  }, [customers, isCustomersLoaded]);
-
-  useEffect(() => {
-    const storedInfo = window.localStorage.getItem(BACKUP_INFO_STORAGE_KEY);
-
-    if (!storedInfo) {
-      return;
-    }
-
-    try {
-      const parsedInfo = JSON.parse(storedInfo) as BackupInfo;
-
-      if (parsedInfo?.lastBackupAt) {
-        setBackupInfo(parsedInfo);
-      }
-    } catch {
-      setBackupInfo(null);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isSupabaseConfigured || !supabase) {
-      setIsAuthLoading(false);
-      return;
-    }
-
-    let isMounted = true;
-
-    supabase.auth.getUser().then(({ data }) => {
-      if (isMounted) {
-        setAuthUser(data.user);
-        setAdminRole(null);
-        setIsAdminCheckLoading(Boolean(data.user));
-        setIsAuthLoading(false);
-      }
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setAuthUser(session?.user ?? null);
-      setAdminRole(null);
-      setIsAdminCheckLoading(Boolean(session?.user));
-      setAuthMessage("");
-    });
-
-    return () => {
-      isMounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  useEffect(() => {
-    async function loadAdminMember() {
-      if (!supabase || !authUser) {
-        setAdminRole(null);
-        setIsAdminCheckLoading(false);
-        return;
-      }
-
-      setIsAdminCheckLoading(true);
-
-      const { data, error } = await supabase
-        .from("amaro_admin_members")
-        .select("role, is_active")
-        .eq("user_id", authUser.id)
-        .eq("is_active", true)
-        .maybeSingle();
-
-      if (error || !data) {
-        setAdminRole(null);
-      } else {
-        setAdminRole((data as AdminMemberRow).role);
-      }
-
-      setIsAdminCheckLoading(false);
-    }
-
-    if (isSupabaseConfigured) {
-      loadAdminMember();
-    }
-  }, [authUser]);
-
-  useEffect(() => {
-    if (isSupabaseMode) {
-      loadSupabaseSales();
-      if (canManagePerfumes) {
-        loadSupabasePerfumes();
-      }
-    }
-  }, [canManagePerfumes, isSupabaseMode]);
-
-  useEffect(() => {
-    if (!canManagePerfumes && activeTab === "perfumes") {
-      setActiveTab("sales");
-    }
-  }, [activeTab, canManagePerfumes]);
-
-  useEffect(() => {
-    if (
-      salePerfumeOptions.length > 0 &&
-      !salePerfumeOptions.some((perfume) => perfume.slug === form.perfumeSlug)
-    ) {
-      const firstPerfume = salePerfumeOptions[0];
-
-      setForm((current) => ({
-        ...current,
-        perfumeSlug: firstPerfume.slug,
-        lineType: firstPerfume.lineType,
-      }));
-    }
-  }, [form.perfumeSlug, salePerfumeOptions]);
-
-  const filteredSales = useMemo(() => {
-    return sales.filter((sale) => {
-      const paymentMethod = normalizePaymentMethod(sale.paymentMethod);
-      const matchesStatus =
-        statusFilter === "todos" ||
-        (statusFilter === "pagos" && sale.status === "pago") ||
-        (statusFilter === "pendentes" && sale.status === "pendente");
-      const matchesPayment =
-        paymentFilter === "todos" || paymentMethod === paymentFilter;
-
-      return matchesStatus && matchesPayment;
-    });
-  }, [paymentFilter, sales, statusFilter]);
+  const currentInventoryItem = useMemo(
+    () => inventory.find((item) => item.perfumeSlug === saleForm.perfumeSlug),
+    [inventory, saleForm.perfumeSlug]
+  );
+  const saleUnitPrice =
+    currentInventoryItem?.lineType === saleForm.lineType
+      ? currentInventoryItem.salePrice
+      : getLinePrice(saleForm.lineType);
+  const saleUnitCost =
+    currentInventoryItem?.lineType === saleForm.lineType
+      ? currentInventoryItem.unitCost
+      : getDefaultUnitCost(saleForm.lineType);
+  const inventoryUnitProfit = inventoryForm.salePrice - inventoryForm.unitCost;
+  const inventoryMargin =
+    inventoryForm.salePrice > 0
+      ? (inventoryUnitProfit / inventoryForm.salePrice) * 100
+      : 0;
 
   const summary = useMemo(() => {
-    const totals = sales.reduce(
-      (acc, sale) => {
-        const profit = saleProfit(sale);
+    const salesSummary = sales.reduce(
+      (totals, sale) => {
+        const saleTotal = sale.unitPrice * sale.quantity;
+        const saleCost = getSaleUnitCost(sale) * sale.quantity;
 
-        acc.revenue += profit.revenue;
-        acc.estimatedCost += profit.estimatedCost;
-        acc.cardFees += profit.cardFee;
-        acc.grossProfit += profit.grossProfit;
-        acc.salesCount += 1;
-        acc.itemsCount += Math.max(1, Number(sale.quantity) || 1);
-
-        if (sale.costPrice === 0) {
-          acc.hasZeroCost = true;
-        }
+        totals.totalSold += saleTotal;
+        totals.perfumeCount += sale.quantity;
+        totals.estimatedCost += saleCost;
+        totals.estimatedProfit += getSaleEstimatedProfit(sale);
 
         if (sale.status === "pago") {
-          acc.totalReceived += profit.revenue;
+          totals.totalReceived += saleTotal;
         } else {
-          acc.totalPending += profit.revenue;
+          totals.totalPending += saleTotal;
         }
 
-        return acc;
+        return totals;
       },
       {
-        revenue: 0,
+        totalSold: 0,
         totalReceived: 0,
         totalPending: 0,
         estimatedCost: 0,
-        cardFees: 0,
-        grossProfit: 0,
-        salesCount: 0,
-        itemsCount: 0,
-        hasZeroCost: false,
+        estimatedProfit: 0,
+        saleCount: sales.length,
+        perfumeCount: 0,
       }
     );
+    const inventoryValue = inventory.reduce(
+      (total, item) => total + item.stockQuantity * item.unitCost,
+      0
+    );
+    const lowStockCount = inventory.filter(
+      (item) => item.stockQuantity <= item.minimumStock
+    ).length;
 
     return {
-      ...totals,
-      averageMargin:
-        totals.revenue > 0 ? (totals.grossProfit / totals.revenue) * 100 : 0,
+      ...salesSummary,
+      inventoryValue,
+      lowStockCount,
     };
-  }, [sales]);
+  }, [inventory, sales]);
 
-  const stockRows = useMemo(() => {
-    return perfumeCommerce.map((perfume) => {
-      const slug = perfumeSlug(perfume);
-      const item = stock[slug] ?? defaultStockItem(slug);
-
-      return {
-        perfume,
-        item,
-        status: stockStatus(item),
-      };
-    });
-  }, [stock]);
-
-  const filteredStockRows = useMemo(() => {
-    return stockRows.filter(({ perfume, item, status }) => {
-      if (stockFilter === "todos") {
-        return true;
-      }
-
-      if (stockFilter === "em_estoque") {
-        return status === "Em estoque";
-      }
-
-      if (stockFilter === "poucas") {
-        return status === "Poucas unidades";
-      }
-
-      if (stockFilter === "sem_estoque") {
-        return status === "Sem estoque";
-      }
-
-      return perfume.line === stockFilter;
-    });
-  }, [stockFilter, stockRows]);
-
-  const onlinePerfumeRows = useMemo(() => {
-    return supabasePerfumes.map((perfume) => {
-      const price = Number(perfume.price) || 0;
-      const cost = Number(perfume.cost_price) || 0;
-      const unitProfit = price - cost;
-      const margin = price > 0 ? (unitProfit / price) * 100 : 0;
-      const stockQuantity = Number(perfume.stock_quantity) || 0;
-
-      return {
-        perfume,
-        price,
-        cost,
-        unitProfit,
-        margin,
-        stockQuantity,
-        status: perfumeStockStatus(stockQuantity),
-      };
-    });
-  }, [supabasePerfumes]);
-
-  const stockSummary = useMemo(() => {
-    if (isSupabaseMode && onlinePerfumeRows.length > 0) {
-      return onlinePerfumeRows.reduce(
-        (acc, row) => {
-          acc.totalUnits += row.stockQuantity;
-
-          if (row.status === "Baixo estoque") {
-            acc.lowItems += 1;
-          }
-
-          if (row.status === "Sem estoque") {
-            acc.emptyItems += 1;
-          }
-
-          return acc;
-        },
-        {
-          differentPerfumes: onlinePerfumeRows.length,
-          totalUnits: 0,
-          lowItems: 0,
-          emptyItems: 0,
-        }
-      );
+  const filteredSales = useMemo(() => {
+    if (filter === "pagos") {
+      return sales.filter((sale) => sale.status === "pago");
     }
 
-    return stockRows.reduce(
-      (acc, row) => {
-        acc.totalUnits += row.item.quantity;
-
-        if (row.status === "Poucas unidades") {
-          acc.lowItems += 1;
-        }
-
-        if (row.status === "Sem estoque") {
-          acc.emptyItems += 1;
-        }
-
-        return acc;
-      },
-      {
-        differentPerfumes: stockRows.length,
-        totalUnits: 0,
-        lowItems: 0,
-        emptyItems: 0,
-      }
-    );
-  }, [isSupabaseMode, onlinePerfumeRows, stockRows]);
-
-  const replenishmentRows = useMemo(() => {
-    if (isSupabaseMode) {
-      return onlinePerfumeRows.filter((row) => row.status !== "Estoque ok");
+    if (filter === "pendentes") {
+      return sales.filter((sale) => sale.status === "pendente");
     }
 
-    return stockRows.filter((row) => row.status !== "Em estoque");
-  }, [isSupabaseMode, onlinePerfumeRows, stockRows]);
+    return sales;
+  }, [filter, sales]);
 
-  const hasMissingCost = useMemo(() => {
-    return (
-      summary.hasZeroCost ||
-      (isSupabaseMode &&
-        supabasePerfumes.some((perfume) => Number(perfume.cost_price) <= 0))
+  const sortedInventory = useMemo(
+    () =>
+      [...inventory].sort((first, second) =>
+        first.perfumeName.localeCompare(second.perfumeName, "pt-BR")
+      ),
+    [inventory]
+  );
+
+  const lowStockItems = useMemo(
+    () =>
+      sortedInventory.filter((item) => item.stockQuantity <= item.minimumStock),
+    [sortedInventory]
+  );
+
+  useEffect(() => {
+    setSales(readSalesFromStorage());
+    setIsSalesLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    setInventory(readInventoryFromStorage());
+    setIsInventoryLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    setSyncToken(window.sessionStorage.getItem(SYNC_TOKEN_STORAGE_KEY) ?? "");
+    setLastSyncAt(window.localStorage.getItem(LAST_SYNC_STORAGE_KEY) ?? "");
+    setIsSyncTokenLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isSyncTokenLoaded) {
+      return;
+    }
+
+    if (syncToken.trim()) {
+      window.sessionStorage.setItem(SYNC_TOKEN_STORAGE_KEY, syncToken);
+      return;
+    }
+
+    window.sessionStorage.removeItem(SYNC_TOKEN_STORAGE_KEY);
+  }, [isSyncTokenLoaded, syncToken]);
+
+  useEffect(() => {
+    if (!isSalesLoaded) {
+      return;
+    }
+
+    if (sales.length === 0) {
+      window.localStorage.removeItem(SALES_STORAGE_KEY);
+      return;
+    }
+
+    window.localStorage.setItem(SALES_STORAGE_KEY, JSON.stringify(sales));
+  }, [isSalesLoaded, sales]);
+
+  useEffect(() => {
+    if (!isInventoryLoaded) {
+      return;
+    }
+
+    if (inventory.length === 0) {
+      window.localStorage.removeItem(INVENTORY_STORAGE_KEY);
+      return;
+    }
+
+    window.localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(inventory));
+  }, [inventory, isInventoryLoaded]);
+
+  function resetSaleForm() {
+    setSaleForm(initialSaleForm);
+  }
+
+  function resetInventoryForm() {
+    setInventoryForm(initialInventoryForm);
+  }
+
+  function handleSalePerfumeChange(perfumeValue: string) {
+    const perfume =
+      perfumeCommerce.find((item) => perfumeSlug(item) === perfumeValue) ??
+      defaultPerfume;
+
+    setSaleForm((current) => ({
+      ...current,
+      perfumeSlug: perfumeSlug(perfume),
+      lineType: getSuggestedLineType(perfume),
+    }));
+  }
+
+  function handleInventoryPerfumeChange(perfumeValue: string) {
+    const perfume =
+      perfumeCommerce.find((item) => perfumeSlug(item) === perfumeValue) ??
+      defaultPerfume;
+    const lineType = getSuggestedLineType(perfume);
+    const storedItem = inventory.find(
+      (item) => item.perfumeSlug === perfumeSlug(perfume)
     );
-  }, [isSupabaseMode, summary.hasZeroCost, supabasePerfumes]);
 
-  const customerSummaries = useMemo(() => {
-    const customerMap = new Map<
-      string,
-      {
-        key: string;
-        name: string;
-        phone: string;
-        notes: string;
-        totalBought: number;
-        totalReceived: number;
-        totalPending: number;
-        purchaseCount: number;
-        lastPurchase: string;
-        sales: Sale[];
-      }
-    >();
-
-    customers.forEach((customer) => {
-      const key = normalizeName(customer.name);
-      customerMap.set(key, {
-        key,
-        name: customer.name,
-        phone: customer.phone ?? "",
-        notes: customer.notes ?? "",
-        totalBought: 0,
-        totalReceived: 0,
-        totalPending: 0,
-        purchaseCount: 0,
-        lastPurchase: "",
-        sales: [],
+    if (storedItem) {
+      setInventoryForm({
+        perfumeSlug: storedItem.perfumeSlug,
+        lineType: storedItem.lineType,
+        stockQuantity: storedItem.stockQuantity,
+        unitCost: storedItem.unitCost,
+        salePrice: storedItem.salePrice,
+        minimumStock: storedItem.minimumStock,
       });
-    });
-
-    sales.forEach((sale) => {
-      const key = normalizeName(sale.customerName);
-      const current =
-        customerMap.get(key) ??
-        {
-          key,
-          name: sale.customerName,
-          phone: "",
-          notes: "",
-          totalBought: 0,
-          totalReceived: 0,
-          totalPending: 0,
-          purchaseCount: 0,
-          lastPurchase: "",
-          sales: [],
-        };
-      const profit = saleProfit(sale);
-
-      current.totalBought += profit.revenue;
-      current.purchaseCount += 1;
-      current.sales.push(sale);
-
-      if (sale.status === "pago") {
-        current.totalReceived += profit.revenue;
-      } else {
-        current.totalPending += profit.revenue;
-      }
-
-      if (!current.lastPurchase || sale.createdAt > current.lastPurchase) {
-        current.lastPurchase = sale.createdAt;
-      }
-
-      customerMap.set(key, current);
-    });
-
-    return Array.from(customerMap.values()).sort((a, b) =>
-      a.name.localeCompare(b.name)
-    );
-  }, [customers, sales]);
-
-  const filteredCustomerSummaries = useMemo(() => {
-    const query = normalizeName(customerQuery);
-
-    return customerSummaries.filter((customer) => {
-      const matchesQuery = !query || normalizeName(customer.name).includes(query);
-      const matchesFilter =
-        customerFilter === "todos" ||
-        (customerFilter === "com_pendencia" && customer.totalPending > 0) ||
-        (customerFilter === "sem_pendencia" && customer.totalPending <= 0) ||
-        (customerFilter === "com_telefone" && Boolean(customer.phone)) ||
-        (customerFilter === "sem_telefone" && !customer.phone);
-
-      return matchesQuery && matchesFilter;
-    });
-  }, [customerFilter, customerQuery, customerSummaries]);
-
-  const customerStats = useMemo(() => {
-    return customerSummaries.reduce(
-      (acc, customer) => {
-        acc.totalPending += customer.totalPending;
-
-        if (customer.totalPending > 0) {
-          acc.withPending += 1;
-        }
-
-        if (customer.totalPending > acc.biggestPending) {
-          acc.biggestPending = customer.totalPending;
-        }
-
-        return acc;
-      },
-      {
-        registered: customers.length,
-        withPending: 0,
-        totalPending: 0,
-        biggestPending: 0,
-      }
-    );
-  }, [customerSummaries, customers.length]);
-
-  const preview = useMemo(
-    () =>
-      saleProfit({
-        lineType: form.lineType,
-        unitPrice,
-        costPrice: unitCost,
-        quantity: Math.max(1, Number(form.quantity) || 1),
-        paymentMethod: form.paymentMethod,
-      }),
-    [form.lineType, form.paymentMethod, form.quantity, unitCost, unitPrice]
-  );
-
-  const pendingSales = useMemo(
-    () => sales.filter((sale) => sale.status === "pendente"),
-    [sales]
-  );
-
-  const alertGroups = useMemo(() => {
-    return pendingSales.reduce(
-      (acc, sale) => {
-        if (!sale.dueDate) {
-          acc.noDueDate.push(sale);
-          return acc;
-        }
-
-        const days = daysBetweenDates(sale.dueDate);
-
-        if (days < 0) {
-          acc.overdue.push(sale);
-        } else if (days === 0) {
-          acc.today.push(sale);
-        } else if (days <= 7) {
-          acc.nextSevenDays.push(sale);
-        }
-
-        return acc;
-      },
-      {
-        overdue: [] as Sale[],
-        today: [] as Sale[],
-        nextSevenDays: [] as Sale[],
-        noDueDate: [] as Sale[],
-      }
-    );
-  }, [pendingSales]);
-
-  const pendingAlertTotal = useMemo(
-    () =>
-      pendingSales.reduce((total, sale) => total + saleProfit(sale).revenue, 0),
-    [pendingSales]
-  );
-
-  const needsDueDate = form.paymentMethod === "fiado" || form.status === "pendente";
-
-  const selectedStock = useMemo(() => {
-    if (isSupabaseMode && selectedSalePerfume) {
-      return {
-        perfumeSlug: selectedSalePerfume.slug,
-        quantity: selectedSalePerfume.stockQuantity,
-        minQuantity: 3,
-        updatedAt: "",
-      };
-    }
-
-    return stock[form.perfumeSlug] ?? defaultStockItem(form.perfumeSlug);
-  }, [form.perfumeSlug, isSupabaseMode, selectedSalePerfume, stock]);
-
-  const selectedStockMessage = useMemo(() => {
-    if (!isSupabaseMode) {
-      return "Baixa automatica de estoque disponivel no modo online.";
-    }
-
-    if (selectedStock.quantity <= 0) {
-      return "Sem estoque disponivel para venda.";
-    }
-
-    if (selectedStock.quantity <= selectedStock.minQuantity) {
-      return "Poucas unidades disponiveis.";
-    }
-
-    return "Disponivel em estoque.";
-  }, [selectedStock]);
-
-  async function loadSupabaseSales() {
-    if (!supabase || !authUser) {
       return;
     }
 
-    setIsSupabaseLoading(true);
-    setSalesMessage("");
-
-    const { data, error } = await supabase
-      .from("amaro_sales")
-      .select(
-        "id, customer_name, perfume_slug, perfume_name, line_type, unit_price, cost_price, quantity, payment_method, status, notes, created_at, paid_at, due_date, customer_phone"
-      )
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      setSalesMessage(
-        "Nao foi possivel carregar as vendas. Tente novamente em instantes."
-      );
-    } else {
-      setSalesSource("supabase");
-      setSales((data ?? []).map((row) => mapSupabaseSale(row as SupabaseSaleRow)));
-      setSalesMessage("Dados salvos com seguranca no sistema.");
-    }
-
-    setIsSupabaseLoading(false);
+    setInventoryForm({
+      perfumeSlug: perfumeSlug(perfume),
+      lineType,
+      stockQuantity: 0,
+      unitCost: getDefaultUnitCost(lineType),
+      salePrice: getLinePrice(lineType),
+      minimumStock: 2,
+    });
   }
 
-  async function loadSupabasePerfumes() {
-    if (!supabase || !authUser || !canManagePerfumes) {
-      return;
-    }
-
-    setIsPerfumeLoading(true);
-    setPerfumeMessage("");
-
-    const { data, error } = await supabase
-      .from("amaro_perfumes")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      setPerfumeMessage(
-        "Nao foi possivel carregar os perfumes. Confira a migration do Pacote 11."
-      );
-    } else {
-      setSupabasePerfumes((data ?? []) as SupabasePerfumeRow[]);
-    }
-
-    setIsPerfumeLoading(false);
-  }
-
-  function handlePerfumeChange(nextSlug: string) {
-    const perfume = salePerfumeOptions.find((item) => item.slug === nextSlug);
-
-    setForm((current) => ({
+  function handleInventoryLineChange(lineType: LineType) {
+    setInventoryForm((current) => ({
       ...current,
-      perfumeSlug: nextSlug,
-      lineType: perfume?.lineType ?? current.lineType,
+      lineType,
+      unitCost: getDefaultUnitCost(lineType),
+      salePrice: getLinePrice(lineType),
     }));
   }
 
-  function handleCustomerSelect(customerId: string) {
-    const customer = customers.find((item) => item.id === customerId);
-
-    setForm((current) => ({
+  function handlePaymentMethodChange(paymentMethod: PaymentMethod) {
+    setSaleForm((current) => ({
       ...current,
-      customerId,
-      customerName: customer?.name ?? current.customerName,
+      paymentMethod,
+      status: paymentMethod === "fiado" ? "pendente" : current.status,
     }));
   }
 
-  async function handleSignIn(event: FormEvent<HTMLFormElement>) {
+  function registerSale(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!supabase) {
+    const customerName = saleForm.customerName.trim();
+
+    if (!customerName) {
       return;
     }
 
-    setIsAuthLoading(true);
-    setAuthMessage("");
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email: authForm.email.trim(),
-      password: authForm.password,
-    });
-
-    setIsAuthLoading(false);
-    setAuthMessage(
-      error ? "Nao foi possivel entrar. Confira email e senha." : "Login realizado."
+    const quantity = Math.max(1, Math.floor(Number(saleForm.quantity) || 1));
+    const now = new Date().toISOString();
+    const inventoryItem = inventory.find(
+      (item) => item.perfumeSlug === perfumeSlug(selectedSalePerfume)
     );
-  }
+    const unitCost =
+      inventoryItem?.lineType === saleForm.lineType
+        ? inventoryItem.unitCost
+        : getDefaultUnitCost(saleForm.lineType);
+    const unitPrice =
+      inventoryItem?.lineType === saleForm.lineType
+        ? inventoryItem.salePrice
+        : getLinePrice(saleForm.lineType);
+    const estimatedProfit = (unitPrice - unitCost) * quantity;
+    const sale: Sale = {
+      id: createId(),
+      customerName,
+      perfumeSlug: perfumeSlug(selectedSalePerfume),
+      perfumeName: selectedSalePerfume.name,
+      lineType: saleForm.lineType,
+      unitPrice,
+      unitCost,
+      estimatedProfit,
+      quantity,
+      paymentMethod: saleForm.paymentMethod,
+      status: saleForm.status,
+      notes: saleForm.notes.trim(),
+      createdAt: now,
+      paidAt: saleForm.status === "pago" ? now : undefined,
+    };
 
-  async function handleSignUp() {
-    if (!supabase) {
-      return;
+    setSales((currentSales) => [sale, ...currentSales]);
+
+    if (inventoryItem) {
+      setInventory((currentInventory) =>
+        currentInventory.map((item) =>
+          item.perfumeSlug === inventoryItem.perfumeSlug
+            ? {
+                ...item,
+                stockQuantity: Math.max(0, item.stockQuantity - quantity),
+                updatedAt: now,
+              }
+            : item
+        )
+      );
+      setSaleNotice("");
+    } else {
+      setSaleNotice("Este perfume ainda não possui estoque cadastrado.");
     }
 
-    setIsAuthLoading(true);
-    setAuthMessage("");
-
-    const { error } = await supabase.auth.signUp({
-      email: authForm.email.trim(),
-      password: authForm.password,
-    });
-
-    setIsAuthLoading(false);
-    setAuthMessage(
-      error
-        ? "Nao foi possivel criar o acesso. Confira os dados informados."
-        : "Acesso criado. Se o sistema pedir confirmacao, verifique o email antes de entrar."
-    );
+    resetSaleForm();
   }
 
-  async function handleSignOut() {
-    if (!supabase) {
-      return;
-    }
-
-    setSalesSource("local");
-    setSales(readLocalSales());
-    setSupabasePerfumes([]);
-    setEditingPerfumeId(null);
-    await supabase.auth.signOut();
-    setAuthUser(null);
-    setSalesMessage("Voce saiu do modo online.");
-  }
-
-  function handleCustomerSubmit(event: FormEvent<HTMLFormElement>) {
+  function saveInventory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    const name = customerForm.name.trim();
-
-    if (!name) {
-      return;
-    }
-
-    const alreadyExists = customers.some(
-      (customer) => normalizeName(customer.name) === normalizeName(name)
-    );
-
-    if (alreadyExists) {
-      setCustomerMessage("Cliente ja cadastrado com esse nome.");
-      return;
-    }
 
     const now = new Date().toISOString();
-    const customer: Customer = {
-      id: createId(),
-      name,
-      phone: customerForm.phone.trim() || undefined,
-      notes: customerForm.notes.trim() || undefined,
-      createdAt: now,
+    const item: InventoryItem = {
+      perfumeSlug: perfumeSlug(selectedInventoryPerfume),
+      perfumeName: selectedInventoryPerfume.name,
+      lineType: inventoryForm.lineType,
+      stockQuantity: Math.max(
+        0,
+        Math.floor(Number(inventoryForm.stockQuantity) || 0)
+      ),
+      unitCost: clampNumber(inventoryForm.unitCost, getDefaultUnitCost(inventoryForm.lineType)),
+      salePrice: clampNumber(inventoryForm.salePrice, getLinePrice(inventoryForm.lineType)),
+      minimumStock: Math.max(
+        0,
+        Math.floor(Number(inventoryForm.minimumStock) || 0)
+      ),
       updatedAt: now,
     };
 
-    setCustomers((current) => [...current, customer]);
-    setCustomerForm(initialCustomerForm);
-    setCustomerMessage("Cliente salvo localmente.");
-  }
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const perfume = selectedSalePerfume;
-
-    if (!perfume || !form.customerName.trim()) {
-      return;
-    }
-
-    const quantity = Math.max(1, Number(form.quantity) || 1);
-
-    if (isSupabaseMode && supabase && authUser) {
-      setIsSupabaseLoading(true);
-      setSalesMessage("");
-
-      const { data: stockPerfume, error: stockError } = await supabase
-        .from("amaro_perfumes")
-        .select("id, slug, name, bottle_type, price, cost_price, stock_quantity")
-        .eq("owner_id", authUser.id)
-        .eq("slug", form.perfumeSlug)
-        .maybeSingle();
-
-      if (stockError || !stockPerfume) {
-        setSalesMessage(
-          "Perfume nao encontrado no controle de estoque. Ajuste o cadastro antes de vender."
-        );
-        setIsSupabaseLoading(false);
-        return;
-      }
-
-      const perfumeRow = stockPerfume as Pick<
-        SupabasePerfumeRow,
-        "id" | "slug" | "name" | "bottle_type" | "price" | "cost_price" | "stock_quantity"
-      >;
-      const currentStock = Number(perfumeRow.stock_quantity) || 0;
-
-      if (currentStock < quantity) {
-        setSalesMessage(
-          "Estoque insuficiente para esta venda. Ajuste o estoque do perfume antes de vender."
-        );
-        setIsSupabaseLoading(false);
-        return;
-      }
-
-      const nextStock = currentStock - quantity;
-      const { data: updatedStock, error: stockUpdateError } = await supabase
-        .from("amaro_perfumes")
-        .update({ stock_quantity: nextStock })
-        .eq("id", perfumeRow.id)
-        .eq("owner_id", authUser.id)
-        .eq("stock_quantity", currentStock)
-        .select("id")
-        .maybeSingle();
-
-      if (stockUpdateError || !updatedStock) {
-        setSalesMessage(
-          "Estoque insuficiente para esta venda. Ajuste o estoque do perfume antes de vender."
-        );
-        setIsSupabaseLoading(false);
-        return;
-      }
-
-      const paidAt = form.status === "pago" ? new Date().toISOString() : null;
-      const { error } = await supabase.from("amaro_sales").insert({
-        owner_id: authUser.id,
-        customer_name: form.customerName.trim(),
-        perfume_slug: form.perfumeSlug,
-        perfume_name: perfumeRow.name,
-        line_type: perfumeRow.bottle_type,
-        unit_price: Number(perfumeRow.price) || 0,
-        cost_price: Number(perfumeRow.cost_price) || 0,
-        quantity,
-        payment_method: toSupabasePaymentMethod(form.paymentMethod),
-        status: form.status,
-        notes: form.notes.trim() || null,
-        customer_phone: form.customerPhone.trim() || null,
-        due_date: form.dueDate || null,
-        paid_at: paidAt,
-      });
-
-      if (error) {
-        await supabase
-          .from("amaro_perfumes")
-          .update({ stock_quantity: currentStock })
-          .eq("id", perfumeRow.id)
-          .eq("owner_id", authUser.id);
-        setSalesMessage(
-          "Nao foi possivel registrar a venda no sistema. Tente novamente."
-        );
-        setIsSupabaseLoading(false);
-        return;
-      }
-
-      setForm(initialForm);
-      await loadSupabaseSales();
-      await loadSupabasePerfumes();
-      setSalesMessage("Venda registrada no sistema.");
-      return;
-    }
-
-    const sale: Sale = {
-      id: createId(),
-      customerName: form.customerName.trim(),
-      perfumeSlug: form.perfumeSlug,
-      perfumeName: perfume.name,
-      lineType: perfume.lineType,
-      unitPrice,
-      costPrice: unitCost,
-      quantity: Math.max(1, Number(form.quantity) || 1),
-      paymentMethod: form.paymentMethod,
-      status: form.status,
-      notes: form.notes.trim(),
-      customerPhone: form.customerPhone.trim() || undefined,
-      dueDate: form.dueDate || undefined,
-      createdAt: new Date().toISOString(),
-      paidAt: form.status === "pago" ? new Date().toISOString() : undefined,
-    };
-
-    setSales((current) => [sale, ...current]);
-    setStockWarning("Baixa automatica de estoque disponivel no modo online.");
-    setForm(initialForm);
-  }
-
-  async function handlePerfumeSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (!supabase || !authUser || !canManagePerfumes) {
-      setPerfumeMessage(
-        "O cadastro dinamico de perfumes precisa do sistema online ativo."
+    setInventory((currentInventory) => {
+      const exists = currentInventory.some(
+        (storedItem) => storedItem.perfumeSlug === item.perfumeSlug
       );
-      return;
-    }
 
-    const name = perfumeForm.name.trim();
-    const collection = perfumeForm.collection.trim();
+      if (!exists) {
+        return [item, ...currentInventory];
+      }
 
-    if (!name || !collection) {
-      setPerfumeMessage("Informe nome autoral e colecao.");
-      return;
-    }
-
-    setIsPerfumeLoading(true);
-    setPerfumeMessage("");
-
-    const payload = {
-      owner_id: authUser.id,
-      slug: createSlugFromName(name),
-      name,
-      inspiration: perfumeForm.inspiration.trim() || null,
-      category: perfumeForm.category,
-      collection,
-      bottle_type: perfumeForm.bottleType,
-      price: Number(perfumeForm.price) || 0,
-      cost_price: Number(perfumeForm.costPrice) || 0,
-      stock_quantity: Math.max(0, Number(perfumeForm.stockQuantity) || 0),
-      olfactive_family: perfumeForm.olfactiveFamily.trim() || null,
-      top_notes: perfumeForm.topNotes.trim() || null,
-      heart_notes: perfumeForm.heartNotes.trim() || null,
-      base_notes: perfumeForm.baseNotes.trim() || null,
-      short_description: perfumeForm.shortDescription.trim() || null,
-      long_description: perfumeForm.longDescription.trim() || null,
-      tags: splitNotes(perfumeForm.tags),
-      image_url: perfumeForm.imageUrl.trim() || null,
-      concept_image_url: perfumeForm.conceptImageUrl.trim() || null,
-      gallery_image_urls: splitImageUrls(perfumeForm.galleryImageUrls),
-      availability_status: perfumeForm.availabilityStatus,
-      is_active: perfumeForm.isActive,
-    };
-
-    const response = editingPerfumeId
-      ? await supabase
-          .from("amaro_perfumes")
-          .update(payload)
-          .eq("id", editingPerfumeId)
-      : await supabase.from("amaro_perfumes").insert(payload);
-
-    if (response.error) {
-      setPerfumeMessage(
-        "Nao foi possivel salvar o perfume. Verifique se o slug ja existe."
+      return currentInventory.map((storedItem) =>
+        storedItem.perfumeSlug === item.perfumeSlug ? item : storedItem
       );
-      setIsPerfumeLoading(false);
-      return;
-    }
-
-    setPerfumeForm(initialPerfumeForm);
-    setMainImageFile(null);
-    setConceptImageFile(null);
-    setGalleryImageFiles([]);
-    setImageUploadMessage("");
-    setEditingPerfumeId(null);
-    await loadSupabasePerfumes();
-    setPerfumeMessage(
-      editingPerfumeId ? "Perfume atualizado." : "Perfume cadastrado."
-    );
-  }
-
-  function handleGalleryFileChange(event: ChangeEvent<HTMLInputElement>) {
-    setGalleryImageFiles(Array.from(event.target.files ?? []));
-  }
-
-  async function uploadSinglePerfumeImage(kind: "main" | "concept") {
-    const file = kind === "main" ? mainImageFile : conceptImageFile;
-
-    if (!file) {
-      setImageUploadMessage("Escolha uma imagem antes de enviar.");
-      return;
-    }
-
-    if (!authUser?.id) {
-      setImageUploadMessage("Entre novamente no painel antes de enviar imagens.");
-      return;
-    }
-
-    setUploadingImageKind(kind);
-    setImageUploadMessage("Enviando imagem...");
-
-    try {
-      const { publicUrl } = await uploadPerfumeImage({
-        file,
-        userId: authUser.id,
-        kind,
-      });
-
-      setPerfumeForm((current) => ({
-        ...current,
-        [kind === "main" ? "imageUrl" : "conceptImageUrl"]: publicUrl,
-      }));
-
-      if (kind === "main") {
-        setMainImageFile(null);
-      } else {
-        setConceptImageFile(null);
-      }
-
-      setImageUploadMessage("Imagem enviada e URL preenchida no formulario.");
-    } catch (error) {
-      setImageUploadMessage(
-        error instanceof Error
-          ? error.message
-          : "Nao foi possivel enviar a imagem."
-      );
-    } finally {
-      setUploadingImageKind(null);
-    }
-  }
-
-  async function uploadGalleryPerfumeImages() {
-    if (galleryImageFiles.length === 0) {
-      setImageUploadMessage("Escolha uma ou mais imagens para a galeria.");
-      return;
-    }
-
-    if (!authUser?.id) {
-      setImageUploadMessage("Entre novamente no painel antes de enviar imagens.");
-      return;
-    }
-
-    setUploadingImageKind("gallery");
-    setImageUploadMessage("Enviando imagens da galeria...");
-
-    try {
-      const uploadedImages = await Promise.all(
-        galleryImageFiles.map((file) =>
-          uploadPerfumeImage({
-            file,
-            userId: authUser.id,
-            kind: "gallery",
-          })
-        )
-      );
-      const nextUrls = [
-        ...splitImageUrls(perfumeForm.galleryImageUrls),
-        ...uploadedImages.map((image) => image.publicUrl),
-      ];
-
-      setPerfumeForm((current) => ({
-        ...current,
-        galleryImageUrls: nextUrls.join("\n"),
-      }));
-      setGalleryImageFiles([]);
-      setImageUploadMessage(
-        `${uploadedImages.length} imagem${
-          uploadedImages.length === 1 ? "" : "s"
-        } adicionada${uploadedImages.length === 1 ? "" : "s"} a galeria.`
-      );
-    } catch (error) {
-      setImageUploadMessage(
-        error instanceof Error
-          ? error.message
-          : "Nao foi possivel enviar as imagens da galeria."
-      );
-    } finally {
-      setUploadingImageKind(null);
-    }
-  }
-
-  function setGalleryUrls(urls: string[]) {
-    setPerfumeForm((current) => ({
-      ...current,
-      galleryImageUrls: urls.join("\n"),
-    }));
-  }
-
-  function removeGalleryImage(indexToRemove: number) {
-    setGalleryUrls(
-      galleryPreviewUrls.filter((_, index) => index !== indexToRemove)
-    );
-    setImageUploadMessage("Imagem removida da galeria no formulario.");
-  }
-
-  function useGalleryImageAs(imageUrl: string, target: "main" | "concept") {
-    setPerfumeForm((current) => ({
-      ...current,
-      [target === "main" ? "imageUrl" : "conceptImageUrl"]: imageUrl,
-    }));
-    setImageUploadMessage(
-      target === "main"
-        ? "Imagem copiada para imagem principal."
-        : "Imagem copiada para imagem conceitual."
-    );
-  }
-
-  async function importInitialPerfumes() {
-    if (!supabase || !authUser || !canManagePerfumes) {
-      setPerfumeMessage("Entre no modo online para importar o catalogo inicial.");
-      return;
-    }
-
-    setIsPerfumeLoading(true);
-    setPerfumeMessage("");
-
-    const { data: existingRows, error: existingError } = await supabase
-      .from("amaro_perfumes")
-      .select("slug");
-
-    if (existingError) {
-      setPerfumeMessage("Nao foi possivel verificar os perfumes existentes.");
-      setIsPerfumeLoading(false);
-      return;
-    }
-
-    const existingSlugs = new Set(
-      ((existingRows ?? []) as { slug: string }[]).map((row) => row.slug)
-    );
-    const newPerfumes = perfumeCommerce
-      .map((perfume) => {
-        const slug = perfumeSlug(perfume);
-
-        return {
-          owner_id: authUser.id,
-          slug,
-          name: perfume.name,
-          inspiration: perfume.inspiration,
-          category: perfume.audience.toLowerCase(),
-          collection: perfume.collection,
-          bottle_type:
-            perfume.line === "arabic_premium" ? "arabe" : "tradicional",
-          price: perfume.priceCents / 100,
-          cost_price: 0,
-          stock_quantity: 0,
-          olfactive_family: perfume.family,
-          top_notes: null,
-          heart_notes: null,
-          base_notes: null,
-          short_description: perfume.description,
-          long_description: perfume.description,
-          tags: perfume.tags,
-          image_url: null,
-          concept_image_url: null,
-          gallery_image_urls: [],
-          availability_status: perfume.availabilityStatus,
-          is_active: true,
-        };
-      })
-      .filter((perfume) => !existingSlugs.has(perfume.slug));
-
-    if (newPerfumes.length === 0) {
-      setPerfumeMessage("Nenhum perfume novo para importar.");
-      setIsPerfumeLoading(false);
-      return;
-    }
-
-    const { error } = await supabase.from("amaro_perfumes").insert(newPerfumes);
-
-    if (error) {
-      setPerfumeMessage("Nao foi possivel importar o catalogo inicial.");
-      setIsPerfumeLoading(false);
-      return;
-    }
-
-    await loadSupabasePerfumes();
-    setPerfumeMessage("Catalogo inicial importado com sucesso.");
-  }
-
-  function editPerfume(perfume: SupabasePerfumeRow) {
-    setEditingPerfumeId(perfume.id);
-    setPerfumeForm(mapPerfumeToForm(perfume));
-    setMainImageFile(null);
-    setConceptImageFile(null);
-    setGalleryImageFiles([]);
-    setImageUploadMessage("");
-    setPerfumeMessage("Editando perfume selecionado.");
-  }
-
-  async function deletePerfume(id: string) {
-    if (!supabase || !canManagePerfumes) {
-      return;
-    }
-
-    const confirmed = window.confirm("Excluir este perfume cadastrado?");
-
-    if (!confirmed) {
-      return;
-    }
-
-    setIsPerfumeLoading(true);
-    setPerfumeMessage("");
-
-    const { error } = await supabase.from("amaro_perfumes").delete().eq("id", id);
-
-    if (error) {
-      setPerfumeMessage("Nao foi possivel excluir o perfume.");
-      setIsPerfumeLoading(false);
-      return;
-    }
-
-    await loadSupabasePerfumes();
-    setPerfumeMessage("Perfume excluido.");
-  }
-
-  async function markAsPaid(id: string) {
-    if (isSupabaseMode && supabase && authUser) {
-      setIsSupabaseLoading(true);
-      setSalesMessage("");
-
-      const { error } = await supabase
-        .from("amaro_sales")
-        .update({ status: "pago", paid_at: new Date().toISOString() })
-        .eq("id", id);
-
-      if (error) {
-        setSalesMessage("Nao foi possivel marcar a venda como paga.");
-        setIsSupabaseLoading(false);
-        return;
-      }
-
-      await loadSupabaseSales();
-      setSalesMessage("Venda marcada como paga no sistema.");
-      return;
-    }
-
-    setSales((current) =>
-      current.map((sale) =>
-        sale.id === id
-          ? { ...sale, status: "pago", paidAt: new Date().toISOString() }
-          : sale
-      )
-    );
-  }
-
-  async function markCustomerPendingAsPaid(customerName: string) {
-    const confirmed = window.confirm(
-      "Marcar todas as pendencias deste cliente como pagas?"
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    const key = normalizeName(customerName);
-
-    if (isSupabaseMode && supabase && authUser) {
-      setIsSupabaseLoading(true);
-      setSalesMessage("");
-
-      const { error } = await supabase
-        .from("amaro_sales")
-        .update({ status: "pago", paid_at: new Date().toISOString() })
-        .eq("customer_name", customerName)
-        .eq("status", "pendente");
-
-      if (error) {
-        setSalesMessage("Nao foi possivel marcar as pendencias como pagas.");
-        setIsSupabaseLoading(false);
-        return;
-      }
-
-      await loadSupabaseSales();
-      setSalesMessage("Pendencias marcadas como pagas no sistema.");
-      return;
-    }
-
-    setSales((current) =>
-      current.map((sale) =>
-        normalizeName(sale.customerName) === key && sale.status === "pendente"
-          ? { ...sale, status: "pago", paidAt: new Date().toISOString() }
-          : sale
-      )
-    );
-  }
-
-  async function copyChargeMessage(customer: {
-    name: string;
-    totalPending: number;
-  }) {
-    const message =
-      customer.totalPending > 0
-        ? `Ola, ${customer.name}! Tudo bem? Passando para lembrar com carinho da pendencia referente aos perfumes da Amaro dos Reis Parfum. O valor em aberto e de ${formatCurrency(
-            customer.totalPending
-          )}. Quando puder, me avise a melhor forma de acertarmos. Muito obrigado!`
-        : `Ola, ${customer.name}! Obrigado pela confianca na Amaro dos Reis Parfum. Sempre que quiser conhecer novas fragrancias, estou a disposicao!`;
-
-    try {
-      await navigator.clipboard.writeText(message);
-      setCustomerMessage("Mensagem copiada.");
-    } catch {
-      window.alert(message);
-    }
-  }
-
-  async function deleteSale(id: string) {
-    const sale = sales.find((item) => item.id === id);
-
-    if (!sale) {
-      return;
-    }
-
-    if (isSupabaseMode && supabase && authUser) {
-      const confirmed = window.confirm("Excluir esta venda do sistema?");
-
-      if (!confirmed) {
-        return;
-      }
-
-      setIsSupabaseLoading(true);
-      setSalesMessage("");
-
-      const { error } = await supabase.from("amaro_sales").delete().eq("id", id);
-      let restoreMessage = "";
-
-      if (error) {
-        setSalesMessage("Nao foi possivel excluir a venda no sistema.");
-        setIsSupabaseLoading(false);
-        return;
-      }
-
-      const { data: perfumeRow, error: perfumeError } = await supabase
-        .from("amaro_perfumes")
-        .select("id, stock_quantity")
-        .eq("owner_id", authUser.id)
-        .eq("slug", sale.perfumeSlug)
-        .maybeSingle();
-
-      if (!perfumeError && perfumeRow) {
-        const row = perfumeRow as Pick<SupabasePerfumeRow, "id" | "stock_quantity">;
-        const { error: restoreError } = await supabase
-          .from("amaro_perfumes")
-          .update({
-            stock_quantity:
-              (Number(row.stock_quantity) || 0) +
-              Math.max(1, Number(sale.quantity) || 1),
-          })
-          .eq("id", row.id);
-
-        if (restoreError) {
-          restoreMessage =
-            " A venda foi excluida, mas nao foi possivel devolver o estoque automaticamente.";
-        }
-      } else if (perfumeError) {
-        restoreMessage =
-          " A venda foi excluida, mas nao foi possivel conferir o estoque automaticamente.";
-      }
-
-      await loadSupabaseSales();
-      await loadSupabasePerfumes();
-      setSalesMessage(`Venda excluida do sistema.${restoreMessage}`);
-      return;
-    }
-
-    const shouldReturnStock = window.confirm(
-      "Deseja devolver esta quantidade ao estoque?"
-    );
-
-    if (shouldReturnStock) {
-      updateStockQuantity(sale.perfumeSlug, sale.quantity);
-    }
-
-    setSales((current) => current.filter((item) => item.id !== id));
-  }
-
-  function updateStockQuantity(slug: string, delta: number) {
-    setStock((current) => {
-      const item = current[slug] ?? defaultStockItem(slug);
-
-      return {
-        ...current,
-        [slug]: {
-          ...item,
-          quantity: Math.max(0, item.quantity + delta),
-          updatedAt: new Date().toISOString(),
-        },
-      };
     });
   }
 
-  function editStockQuantity(slug: string) {
-    const item = stock[slug] ?? defaultStockItem(slug);
-    const nextValue = window.prompt("Informe a quantidade em estoque:", String(item.quantity));
+  function editInventoryItem(item: InventoryItem) {
+    setInventoryForm({
+      perfumeSlug: item.perfumeSlug,
+      lineType: item.lineType,
+      stockQuantity: item.stockQuantity,
+      unitCost: item.unitCost,
+      salePrice: item.salePrice,
+      minimumStock: item.minimumStock,
+    });
+  }
 
-    if (nextValue === null) {
+  function deleteInventoryItem(perfumeValue: string) {
+    const confirmed = window.confirm("Excluir este item de estoque?");
+
+    if (!confirmed) {
       return;
     }
 
-    const quantity = Math.max(0, Number(nextValue) || 0);
-
-    setStock((current) => ({
-      ...current,
-      [slug]: {
-        ...(current[slug] ?? defaultStockItem(slug)),
-        quantity,
-        updatedAt: new Date().toISOString(),
-      },
-    }));
+    setInventory((currentInventory) =>
+      currentInventory.filter((item) => item.perfumeSlug !== perfumeValue)
+    );
   }
 
-  function editMinQuantity(slug: string) {
-    const item = stock[slug] ?? defaultStockItem(slug);
-    const nextValue = window.prompt("Informe o estoque minimo:", String(item.minQuantity));
+  function markAsPaid(saleId: string) {
+    const now = new Date().toISOString();
 
-    if (nextValue === null) {
+    setSales((currentSales) =>
+      currentSales.map((sale) =>
+        sale.id === saleId
+          ? {
+              ...sale,
+              status: "pago",
+              paidAt: sale.paidAt ?? now,
+            }
+          : sale
+      )
+    );
+  }
+
+  function deleteSale(saleId: string) {
+    const confirmed = window.confirm("Excluir esta venda?");
+
+    if (!confirmed) {
       return;
     }
 
-    const minQuantity = Math.max(0, Number(nextValue) || 0);
-
-    setStock((current) => ({
-      ...current,
-      [slug]: {
-        ...(current[slug] ?? defaultStockItem(slug)),
-        minQuantity,
-        updatedAt: new Date().toISOString(),
-      },
-    }));
+    setSales((currentSales) => currentSales.filter((sale) => sale.id !== saleId));
   }
 
-  function exportCsv() {
-    const header = [
-      "cliente",
-      "perfume",
-      "linha",
-      "preco_unitario",
-      "quantidade",
-      "total",
-      "custo_unitario",
-      "custo_total",
-      "lucro_estimado",
-      "forma_pagamento",
-      "status",
-      "telefone_cliente",
-      "vencimento",
-      "data",
-      "observacao",
-      "taxa_cartao",
-      "margem_percentual",
-    ];
-
-    const rows = sales.map((sale) => {
-      const profit = saleProfit(sale);
-      const paymentMethod = normalizePaymentMethod(sale.paymentMethod);
-
-      return [
+  function exportSalesCsv() {
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = [
+      [
+        "ID",
+        "Cliente",
+        "Perfume",
+        "Linha",
+        "Preço unitário",
+        "Custo unitário",
+        "Quantidade",
+        "Valor total",
+        "Lucro estimado",
+        "Forma de pagamento",
+        "Status",
+        "Data",
+        "Pago em",
+        "Observação",
+      ],
+      ...sales.map((sale) => [
+        sale.id,
         sale.customerName,
         sale.perfumeName,
-        lineLabels[sale.lineType] ?? sale.lineType,
-        sale.unitPrice,
+        lineLabel(sale.lineType),
+        sale.unitPrice.toFixed(2),
+        getSaleUnitCost(sale).toFixed(2),
         sale.quantity,
-        profit.revenue,
-        profit.unitCost.toFixed(2),
-        profit.estimatedCost.toFixed(2),
-        profit.grossProfit.toFixed(2),
-        paymentLabels[paymentMethod],
-        statusLabels[sale.status],
-        sale.customerPhone ?? "",
-        sale.dueDate ? formatDateOnly(sale.dueDate) : "",
-        formatDate(sale.createdAt),
+        (sale.unitPrice * sale.quantity).toFixed(2),
+        getSaleEstimatedProfit(sale).toFixed(2),
+        paymentOptions.find((option) => option.value === sale.paymentMethod)
+          ?.label ?? sale.paymentMethod,
+        statusOptions.find((option) => option.value === sale.status)?.label ??
+          sale.status,
+        sale.createdAt,
+        sale.paidAt ?? "",
         sale.notes,
-        profit.cardFee.toFixed(2),
-        profit.marginPercent.toFixed(2),
-      ];
-    });
-
-    const csv = [header, ...rows]
-      .map((row) => row.map(escapeCsv).join(","))
-      .join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-
-    link.href = url;
-    link.download = "amaro-vendas.csv";
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-
-  function exportStockCsv() {
-    const header = [
-      "perfume",
-      "colecao",
-      "tipo",
-      "preco",
-      "quantidade",
-      "estoque_minimo",
-      "status",
-      "atualizado_em",
+      ]),
     ];
 
-    const rows = stockRows.map(({ perfume, item, status }) => [
-      perfume.name,
-      perfume.collection,
-      lineLabels[perfume.line],
-      getLinePrice(perfume.line),
-      item.quantity,
-      item.minQuantity,
-      status,
-      item.updatedAt ? formatDate(item.updatedAt) : "",
-    ]);
-
-    const csv = [header, ...rows]
-      .map((row) => row.map(escapeCsv).join(","))
-      .join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-
-    link.href = url;
-    link.download = "amaro-estoque.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadCsv(`amaro-vendas-${today}.csv`, rows);
   }
 
-  function exportCustomersCsv() {
-    const header = [
-      "nome",
-      "telefone",
-      "total_comprado",
-      "total_recebido",
-      "total_pendente",
-      "quantidade_compras",
-      "ultima_compra",
-      "observacao",
+  function exportInventoryCsv() {
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = [
+      [
+        "Perfume",
+        "Linha",
+        "Estoque atual",
+        "Custo unitário",
+        "Preço de venda",
+        "Lucro estimado por unidade",
+        "Margem aproximada",
+        "Estoque mínimo",
+        "Status",
+        "Atualizado em",
+      ],
+      ...sortedInventory.map((item) => [
+        item.perfumeName,
+        lineLabel(item.lineType),
+        item.stockQuantity,
+        item.unitCost.toFixed(2),
+        item.salePrice.toFixed(2),
+        (item.salePrice - item.unitCost).toFixed(2),
+        formatPercent(getItemMargin(item)),
+        item.minimumStock,
+        getInventoryStatus(item),
+        item.updatedAt,
+      ]),
     ];
-    const rows = customerSummaries.map((customer) => [
-      customer.name,
-      customer.phone,
-      customer.totalBought.toFixed(2),
-      customer.totalReceived.toFixed(2),
-      customer.totalPending.toFixed(2),
-      customer.purchaseCount,
-      customer.lastPurchase ? formatDate(customer.lastPurchase) : "",
-      customer.notes,
-    ]);
-    const csv = [header, ...rows]
-      .map((row) => row.map(escapeCsv).join(","))
-      .join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
 
-    link.href = url;
-    link.download = "amaro-clientes.csv";
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-
-  function createFullBackup(): FullBackup {
-    return {
-      app: "Amaro dos Reis Parfum",
-      version: 1,
-      createdAt: new Date().toISOString(),
-      storageKeys: {
-        sales: SALES_STORAGE_KEY,
-        stock: STOCK_STORAGE_KEY,
-        customers: CUSTOMERS_STORAGE_KEY,
-      },
-      data: {
-        sales,
-        stock,
-        customers,
-      },
-    };
+    downloadCsv(`amaro-estoque-${today}.csv`, rows);
   }
 
   function exportFullBackup() {
-    const backup = createFullBackup();
-    const date = backup.createdAt.slice(0, 10);
-    const nextBackupInfo = { lastBackupAt: backup.createdAt };
+    const backupDate = new Date().toISOString();
+    const today = backupDate.slice(0, 10);
 
-    downloadJson(`amaro-dos-reis-backup-${date}.json`, backup);
-    window.localStorage.setItem(
-      BACKUP_INFO_STORAGE_KEY,
-      JSON.stringify(nextBackupInfo)
-    );
-    setBackupInfo(nextBackupInfo);
-    setBackupMessage("Backup completo baixado com sucesso.");
+    downloadJson(`amaro-dos-reis-backup-${today}.json`, {
+      backupVersion: BACKUP_VERSION,
+      version: BACKUP_VERSION,
+      backupDate,
+      storageKeys: {
+        sales: SALES_STORAGE_KEY,
+        inventory: INVENTORY_STORAGE_KEY,
+      },
+      sales,
+      inventory,
+    });
+
+    setBackupError("");
+    setBackupMessage("Backup completo exportado com sucesso.");
   }
 
-  function exportPartialBackup(kind: "sales" | "stock" | "customers") {
-    const backup = {
-      app: "Amaro dos Reis Parfum",
-      version: 1,
-      createdAt: new Date().toISOString(),
-      storageKey:
-        kind === "sales"
-          ? SALES_STORAGE_KEY
-          : kind === "stock"
-            ? STOCK_STORAGE_KEY
-            : CUSTOMERS_STORAGE_KEY,
-      data: kind === "sales" ? sales : kind === "stock" ? stock : customers,
-    };
+  function handleBackupFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
 
-    downloadJson(`amaro-${kind}-backup-${backup.createdAt.slice(0, 10)}.json`, backup);
-    setBackupMessage("Backup parcial baixado com sucesso.");
-  }
+    setBackupImport(null);
+    setBackupMessage("");
+    setBackupError("");
 
-  function isValidFullBackup(value: unknown): value is FullBackup {
-    if (!value || typeof value !== "object") {
-      return false;
+    if (!file) {
+      setBackupFileName("");
+      return;
     }
 
-    const backup = value as FullBackup;
+    setBackupFileName(file.name);
 
-    return (
-      backup.app === "Amaro dos Reis Parfum" &&
-      backup.version === 1 &&
-      Boolean(backup.data) &&
-      Array.isArray(backup.data.sales) &&
-      Boolean(backup.data.stock) &&
-      typeof backup.data.stock === "object" &&
-      Array.isArray(backup.data.customers)
-    );
-  }
-
-  function restoreBackupFile(file: File) {
     const reader = new FileReader();
 
     reader.onload = () => {
       try {
-        const parsedBackup = JSON.parse(String(reader.result));
+        const content = String(reader.result ?? "");
+        const parsedBackup = JSON.parse(content) as unknown;
+        const normalizedBackup = normalizeBackup(parsedBackup);
 
-        if (!isValidFullBackup(parsedBackup)) {
+        if (!normalizedBackup) {
           throw new Error("Invalid backup");
         }
 
-        const confirmed = window.confirm(
-          "Esta acao vai substituir vendas, estoque e clientes salvos neste navegador. Deseja continuar?"
-        );
-
-        if (!confirmed) {
-          return;
-        }
-
-        window.localStorage.setItem(
-          SALES_STORAGE_KEY,
-          JSON.stringify(parsedBackup.data.sales)
-        );
-        window.localStorage.setItem(
-          STOCK_STORAGE_KEY,
-          JSON.stringify(parsedBackup.data.stock)
-        );
-        window.localStorage.setItem(
-          CUSTOMERS_STORAGE_KEY,
-          JSON.stringify(parsedBackup.data.customers)
-        );
-
-        setSales(parsedBackup.data.sales);
-        setStock(parsedBackup.data.stock);
-        setCustomers(parsedBackup.data.customers);
-        setBackupMessage("Backup restaurado com sucesso.");
+        setBackupImport(normalizedBackup);
+        setBackupMessage("Backup carregado para conferência.");
       } catch {
-        setBackupMessage(
-          "Nao foi possivel restaurar este arquivo. Verifique se e um backup valido da Amaro dos Reis Parfum."
+        setBackupImport(null);
+        setBackupError(
+          "Arquivo inválido. Importe um JSON de backup amaro_backup_v1 com vendas e estoque."
         );
       }
+    };
+
+    reader.onerror = () => {
+      setBackupImport(null);
+      setBackupError("Não foi possível ler o arquivo selecionado.");
     };
 
     reader.readAsText(file);
   }
 
-  const summaryCards = [
-    ["Faturamento total", formatCurrency(summary.revenue)],
+  function restoreBackup() {
+    if (!backupImport) {
+      setBackupError("Selecione um backup válido antes de restaurar.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Isso substituirá as vendas e o estoque salvos neste navegador. Deseja continuar?"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    window.localStorage.setItem(
+      SALES_STORAGE_KEY,
+      JSON.stringify(backupImport.sales)
+    );
+    window.localStorage.setItem(
+      INVENTORY_STORAGE_KEY,
+      JSON.stringify(backupImport.inventory)
+    );
+    setSales(backupImport.sales);
+    setInventory(backupImport.inventory);
+    setBackupError("");
+    setBackupMessage("Backup restaurado com sucesso.");
+  }
+
+  function getSyncTokenOrWarn() {
+    const token = syncToken.trim();
+
+    if (!token) {
+      setSyncMessage("");
+      setSyncError("Informe o token de sincronização.");
+      return "";
+    }
+
+    return token;
+  }
+
+  function getPayloadMessage(
+    payload: Record<string, unknown>,
+    fallback: string
+  ) {
+    return typeof payload.message === "string" && payload.message.trim()
+      ? payload.message
+      : fallback;
+  }
+
+  async function readSyncPayload(response: Response) {
+    const payload = (await response.json().catch(() => null)) as unknown;
+
+    if (!isRecord(payload)) {
+      throw new Error("Resposta inválida da sincronização.");
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        getPayloadMessage(
+          payload,
+          response.status === 401
+            ? "Token de sincronização inválido."
+            : "Não foi possível concluir a sincronização."
+        )
+      );
+    }
+
+    return payload;
+  }
+
+  function saveLastSyncTimestamp() {
+    const now = new Date().toISOString();
+
+    window.localStorage.setItem(LAST_SYNC_STORAGE_KEY, now);
+    setLastSyncAt(now);
+  }
+
+  async function checkPrivateConnection() {
+    const token = getSyncTokenOrWarn();
+
+    if (!token) {
+      return;
+    }
+
+    setSyncAction("status");
+    setSyncMessage("");
+    setSyncError("");
+    setSyncStatus(null);
+
+    try {
+      const response = await fetch("/api/admin/sync/status", {
+        headers: {
+          "x-amaro-admin-token": token,
+        },
+      });
+      const payload = await readSyncPayload(response);
+      const status: SyncStatus = {
+        configured: payload.configured === true,
+        salesCount:
+          typeof payload.salesCount === "number" ? payload.salesCount : 0,
+        inventoryCount:
+          typeof payload.inventoryCount === "number"
+            ? payload.inventoryCount
+            : 0,
+        message:
+          typeof payload.message === "string" ? payload.message : undefined,
+      };
+
+      setSyncStatus(status);
+
+      if (payload.ok === false) {
+        throw new Error(
+          getPayloadMessage(payload, "Supabase server-side não configurado.")
+        );
+      }
+
+      setSyncMessage("Conexão privada verificada com sucesso.");
+    } catch (error) {
+      setSyncError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível verificar a conexão privada."
+      );
+    } finally {
+      setSyncAction("");
+    }
+  }
+
+  async function pushLocalDataToSupabase() {
+    const token = getSyncTokenOrWarn();
+
+    if (!token) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Isso enviará suas vendas e estoque locais para o Supabase. Nenhum dado local será apagado. Continuar?"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setSyncAction("push");
+    setSyncMessage("");
+    setSyncError("");
+
+    try {
+      const response = await fetch("/api/admin/sync/push", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-amaro-admin-token": token,
+        },
+        body: JSON.stringify({ sales, inventory }),
+      });
+      const payload = await readSyncPayload(response);
+
+      if (payload.ok === false) {
+        throw new Error(
+          getPayloadMessage(
+            payload,
+            "Não foi possível enviar os dados ao Supabase."
+          )
+        );
+      }
+
+      saveLastSyncTimestamp();
+      setSyncMessage(
+        getPayloadMessage(
+          payload,
+          "Dados locais enviados ao Supabase com sucesso."
+        )
+      );
+    } catch (error) {
+      setSyncError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível enviar os dados ao Supabase."
+      );
+    } finally {
+      setSyncAction("");
+    }
+  }
+
+  async function pullDataFromSupabase() {
+    const token = getSyncTokenOrWarn();
+
+    if (!token) {
+      return;
+    }
+
+    setSyncAction("pull");
+    setSyncMessage("");
+    setSyncError("");
+
+    try {
+      const response = await fetch("/api/admin/sync/pull", {
+        headers: {
+          "x-amaro-admin-token": token,
+        },
+      });
+      const payload = await readSyncPayload(response);
+
+      if (payload.ok === false) {
+        throw new Error(
+          getPayloadMessage(
+            payload,
+            "Não foi possível buscar os dados do Supabase."
+          )
+        );
+      }
+
+      const downloadedSales = Array.isArray(payload.sales)
+        ? payload.sales
+            .map((sale) => normalizeSale(sale))
+            .filter((sale): sale is Sale => sale !== null)
+        : [];
+      const downloadedInventory = Array.isArray(payload.inventory)
+        ? payload.inventory
+            .map((item) => normalizeInventoryItem(item))
+            .filter((item): item is InventoryItem => item !== null)
+        : [];
+
+      setPulledSyncData({
+        sales: downloadedSales,
+        inventory: downloadedInventory,
+      });
+      setSyncMessage(
+        `Dados baixados para prévia: ${downloadedSales.length} venda${
+          downloadedSales.length === 1 ? "" : "s"
+        } e ${downloadedInventory.length} item${
+          downloadedInventory.length === 1 ? "" : "s"
+        } de estoque.`
+      );
+    } catch (error) {
+      setSyncError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível buscar os dados do Supabase."
+      );
+    } finally {
+      setSyncAction("");
+    }
+  }
+
+  function restorePulledData() {
+    if (!pulledSyncData) {
+      setSyncMessage("");
+      setSyncError("Busque os dados do Supabase antes de restaurar.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Isso substituirá os dados locais deste navegador pelos dados baixados do Supabase. Faça backup antes. Continuar?"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setSyncAction("restore");
+    setSyncMessage("");
+    setSyncError("");
+
+    window.localStorage.setItem(
+      SALES_STORAGE_KEY,
+      JSON.stringify(pulledSyncData.sales)
+    );
+    window.localStorage.setItem(
+      INVENTORY_STORAGE_KEY,
+      JSON.stringify(pulledSyncData.inventory)
+    );
+    setSales(pulledSyncData.sales);
+    setInventory(pulledSyncData.inventory);
+    saveLastSyncTimestamp();
+    setSyncAction("");
+    setSyncMessage("Dados baixados do Supabase restaurados neste navegador.");
+  }
+
+  async function copyFinancialSummary() {
+    const text = [
+      "AMARO DOS REIS PARFUM - Resumo financeiro",
+      `Total vendido: ${formatCurrency(summary.totalSold)}`,
+      `Total recebido: ${formatCurrency(summary.totalReceived)}`,
+      `Total pendente: ${formatCurrency(summary.totalPending)}`,
+      `Lucro estimado total: ${formatCurrency(summary.estimatedProfit)}`,
+      `Quantidade de vendas: ${summary.saleCount}`,
+      `Quantidade de perfumes vendidos: ${summary.perfumeCount}`,
+      `Valor em estoque: ${formatCurrency(summary.inventoryValue)}`,
+    ].join("\n");
+
+    try {
+      await copyTextToClipboard(text);
+      setSummaryCopyMessage("Resumo financeiro copiado.");
+    } catch {
+      setSummaryCopyMessage("Não foi possível copiar o resumo financeiro.");
+    }
+  }
+
+  function clearAllSales() {
+    const confirmed = window.confirm(
+      "Tem certeza que deseja limpar todas as vendas deste navegador?"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    window.localStorage.removeItem(SALES_STORAGE_KEY);
+    setSales([]);
+  }
+
+  const isSyncBusy = syncAction !== "";
+
+  const reportCards = [
+    ["Total vendido", formatCurrency(summary.totalSold)],
     ["Total recebido", formatCurrency(summary.totalReceived)],
     ["Total pendente", formatCurrency(summary.totalPending)],
-    ["Custo estimado", formatCurrency(summary.estimatedCost)],
-    ["Lucro bruto estimado", formatCurrency(summary.grossProfit)],
-    ["Margem media", formatPercent(summary.averageMargin)],
-    ["Perfumes vendidos", summary.itemsCount],
-    ["Perfumes diferentes cadastrados", stockSummary.differentPerfumes],
-    ["Unidades em estoque", stockSummary.totalUnits],
-    ["Itens com poucas unidades", stockSummary.lowItems],
-    ["Itens sem estoque", stockSummary.emptyItems],
-    ["Taxas de cartao estimadas", formatCurrency(summary.cardFees)],
-    ["Clientes cadastrados", customerStats.registered],
-    ["Clientes com pendencia", customerStats.withPending],
-    ["Pendente por clientes", formatCurrency(customerStats.totalPending)],
-    ["Maior pendencia individual", formatCurrency(customerStats.biggestPending)],
+    ["Lucro estimado total", formatCurrency(summary.estimatedProfit)],
+    ["Custo estimado total", formatCurrency(summary.estimatedCost)],
+    ["Valor em estoque", formatCurrency(summary.inventoryValue)],
+    ["Quantidade de vendas", String(summary.saleCount)],
+    ["Perfumes vendidos", String(summary.perfumeCount)],
+    ["Perfumes com baixo estoque", String(summary.lowStockCount)],
   ];
 
-  if (!isSupabaseConfigured && !isDevelopment) {
-    return (
-      <main className="min-h-screen bg-[#050505] text-stone-100">
-        <section className="premium-bg border-b border-gold/15 px-6 py-20 sm:px-10 lg:px-12">
-          <div className="mx-auto max-w-3xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.34em] text-gold">
-              Area administrativa
-            </p>
-            <h1 className="mt-5 text-4xl font-semibold uppercase leading-tight text-white sm:text-6xl">
-              Painel indisponivel.
-            </h1>
-            <p className="mt-6 leading-8 text-stone-300">
-              Configure o sistema online para acessar.
-            </p>
-          </div>
-        </section>
-      </main>
-    );
-  }
-
-  if (isSupabaseConfigured && isAuthLoading) {
-    return (
-      <main className="min-h-screen bg-[#050505] text-stone-100">
-        <section className="premium-bg border-b border-gold/15 px-6 py-20 sm:px-10 lg:px-12">
-          <div className="mx-auto max-w-3xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.34em] text-gold">
-              Area administrativa
-            </p>
-            <h1 className="mt-5 text-4xl font-semibold uppercase leading-tight text-white">
-              Verificando sessao...
-            </h1>
-          </div>
-        </section>
-      </main>
-    );
-  }
-
-  if (isSupabaseConfigured && !authUser) {
-    return (
-      <main className="min-h-screen bg-[#050505] text-stone-100">
-        <section className="premium-bg border-b border-gold/15 px-6 py-16 sm:px-10 lg:px-12">
-          <div className="mx-auto max-w-3xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.34em] text-gold">
-              Acesso restrito
-            </p>
-            <h1 className="mt-5 text-4xl font-semibold uppercase leading-tight text-white sm:text-6xl">
-              Area administrativa
-            </h1>
-            <p className="mt-6 leading-8 text-stone-300">
-              Entre com um usuario autorizado da Amaro dos Reis Parfum.
-            </p>
-          </div>
-        </section>
-
-        <section className="px-6 py-10 sm:px-10 lg:px-12">
-          <form
-            onSubmit={handleSignIn}
-            className="mx-auto grid max-w-xl gap-4 premium-surface p-6"
-          >
-            <label>
-              <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                Email
-              </span>
-              <input
-                type="email"
-                required
-                value={authForm.email}
-                onChange={(event) =>
-                  setAuthForm((current) => ({
-                    ...current,
-                    email: event.target.value,
-                  }))
-                }
-                className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
-              />
-            </label>
-            <label>
-              <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                Senha
-              </span>
-              <input
-                type="password"
-                required
-                value={authForm.password}
-                onChange={(event) =>
-                  setAuthForm((current) => ({
-                    ...current,
-                    password: event.target.value,
-                  }))
-                }
-                className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
-              />
-            </label>
-            {authMessage ? (
-              <p className="text-sm leading-6 text-gold-light">{authMessage}</p>
-            ) : null}
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="submit"
-                disabled={isAuthLoading}
-                className="min-h-10 rounded-full bg-gold px-5 text-xs font-semibold uppercase tracking-[0.16em] text-black transition hover:bg-gold-light disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Entrar
-              </button>
-              {isDevelopment ? (
-                <button
-                  type="button"
-                  onClick={handleSignUp}
-                  disabled={isAuthLoading}
-                  className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Criar acesso dev
-                </button>
-              ) : null}
-            </div>
-            {isDevelopment ? (
-              <p className="text-xs leading-6 text-stone-500">
-                Criar acesso aparece apenas em desenvolvimento. Em producao, o
-                usuario deve ser criado e autorizado no sistema.
-              </p>
-            ) : null}
-          </form>
-        </section>
-      </main>
-    );
-  }
-
-  if (isSupabaseConfigured && authUser && isAdminCheckLoading) {
-    return (
-      <main className="min-h-screen bg-[#050505] text-stone-100">
-        <section className="premium-bg border-b border-gold/15 px-6 py-20 sm:px-10 lg:px-12">
-          <div className="mx-auto max-w-3xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.34em] text-gold">
-              Area administrativa
-            </p>
-            <h1 className="mt-5 text-4xl font-semibold uppercase leading-tight text-white">
-              Verificando autorizacao...
-            </h1>
-          </div>
-        </section>
-      </main>
-    );
-  }
-
-  if (isSupabaseConfigured && authUser && !adminRole) {
-    return (
-      <main className="min-h-screen bg-[#050505] text-stone-100">
-        <section className="premium-bg border-b border-gold/15 px-6 py-20 sm:px-10 lg:px-12">
-          <div className="mx-auto max-w-3xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.34em] text-gold">
-              Acesso nao autorizado
-            </p>
-            <h1 className="mt-5 text-4xl font-semibold uppercase leading-tight text-white sm:text-6xl">
-              Este painel e restrito.
-            </h1>
-            <p className="mt-6 leading-8 text-stone-300">
-              Este painel e restrito aos administradores da Amaro dos Reis
-              Parfum.
-            </p>
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="mt-9 min-h-12 rounded-full bg-gold px-8 text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-gold-light"
-            >
-              Sair
-            </button>
-          </div>
-        </section>
-      </main>
-    );
-  }
-
   return (
-    <main className="min-h-screen bg-[#050505] text-stone-100">
-      <section className="premium-bg border-b border-gold/15 px-6 py-12 sm:px-10 lg:px-12">
-        <div className="mx-auto max-w-7xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.34em] text-gold">
-            {isSupabaseMode
-              ? `Acesso autorizado: ${adminRole}`
-              : "Modo local"}
-          </p>
-          <h1 className="mt-5 text-4xl font-semibold uppercase leading-tight text-white sm:text-5xl">
-            Area administrativa &mdash; Amaro dos Reis Parfum
-          </h1>
-          <p className="mt-5 max-w-3xl leading-8 text-stone-300">
-            {isSupabaseMode
-              ? "Sistema online ativo: painel restrito aos administradores autorizados."
-              : "Modo local: os dados ficam salvos apenas neste navegador."}
-          </p>
+    <main className="min-h-screen bg-black text-stone-100">
+      <section className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-5 py-8 sm:px-8 lg:px-12">
+        <div className="rounded-lg border border-gold/25 bg-gold/10 p-4 text-sm leading-6 text-gold-light">
+          Versão local: os dados ficam salvos apenas neste navegador.
+          Futuramente este painel será integrado ao Supabase.
         </div>
-      </section>
 
-      <section className="px-6 py-10 sm:px-10 lg:px-12">
-        <div className="mx-auto max-w-7xl">
-          <section className="mb-8 premium-surface p-6">
-            <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-start">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gold">
-                  {isSupabaseMode ? "Sistema online ativo" : "Modo local"}
-                </p>
-                <h2 className="mt-3 text-2xl font-semibold text-white">
-                  {isSupabaseMode
-                    ? "Controle de vendas e estoque"
-                    : isSupabaseConfigured
-                      ? "Entre para usar o sistema online"
-                      : "Sistema online ainda nao configurado"}
-                </h2>
-                <p className="mt-3 max-w-3xl text-sm leading-7 text-stone-400">
-                  {isSupabaseMode
-                    ? `Logado como: ${authUser?.email ?? "usuario autenticado"}.`
-                    : isSupabaseConfigured
-                      ? "Enquanto nao houver login, o painel continua usando o modo local deste navegador."
-                      : "Sistema online ainda nao configurado. Usando controle local apenas neste navegador."}
-                </p>
-                {authMessage ? (
-                  <p className="mt-3 text-sm leading-6 text-gold-light">
-                    {authMessage}
-                  </p>
-                ) : null}
-                {salesMessage ? (
-                  <p className="mt-3 text-sm leading-6 text-gold-light">
-                    {salesMessage}
-                  </p>
-                ) : null}
-              </div>
+        <div className="rounded-lg border border-white/10 bg-white/[0.035] p-4 text-sm leading-6 text-stone-300">
+          Os valores de custo e lucro são estimativas para controle interno.
+          Ajuste os custos conforme seus fornecedores reais.
+        </div>
 
-              {isSupabaseConfigured ? (
-                authUser ? (
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={loadSupabaseSales}
-                      disabled={isSupabaseLoading}
-                      className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isSupabaseLoading ? "Atualizando..." : "Atualizar dados"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSignOut}
-                      className="min-h-10 rounded-full border border-white/15 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-stone-300 transition hover:border-gold/50 hover:text-gold-light"
-                    >
-                      Sair
-                    </button>
-                  </div>
-                ) : (
-                  <form
-                    onSubmit={handleSignIn}
-                    className="grid w-full gap-3 lg:max-w-xl"
-                  >
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <label>
-                        <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                          Email
-                        </span>
-                        <input
-                          type="email"
-                          required
-                          value={authForm.email}
-                          onChange={(event) =>
-                            setAuthForm((current) => ({
-                              ...current,
-                              email: event.target.value,
-                            }))
-                          }
-                          className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
-                        />
-                      </label>
-                      <label>
-                        <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                          Senha
-                        </span>
-                        <input
-                          type="password"
-                          required
-                          value={authForm.password}
-                          onChange={(event) =>
-                            setAuthForm((current) => ({
-                              ...current,
-                              password: event.target.value,
-                            }))
-                          }
-                          className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
-                        />
-                      </label>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="submit"
-                        disabled={isAuthLoading}
-                        className="min-h-10 rounded-full bg-gold px-5 text-xs font-semibold uppercase tracking-[0.16em] text-black transition hover:bg-gold-light disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Entrar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSignUp}
-                        disabled={isAuthLoading}
-                        className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Criar acesso
-                      </button>
-                    </div>
-                  </form>
-                )
-              ) : null}
-            </div>
-          </section>
-
-          <div className="mb-8 flex flex-wrap gap-2">
-            {[
-              ["overview", "Visao geral"],
-              ["sales", "Vendas"],
-              ...(canManagePerfumes ? ([["perfumes", "Perfumes"]] as const) : []),
-              ["alerts", "Alertas"],
-            ].map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setActiveTab(value as AdminTab)}
-                className={`min-h-10 rounded-full border px-4 text-xs font-semibold uppercase tracking-[0.14em] transition ${
-                  activeTab === value
-                    ? "border-gold bg-gold text-black"
-                    : "border-gold/30 bg-gold/10 text-gold-light hover:border-gold-light"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {activeTab === "overview" ? (
-            <>
-              <div className="mb-4 grid gap-4 md:grid-cols-3">
-                <article className="border border-red-400/30 bg-red-950/25 p-5">
-                  <p className="text-xs uppercase tracking-[0.24em] text-red-300">
-                    Vencidas
-                  </p>
-                  <p className="mt-3 text-2xl font-semibold text-red-200">
-                    {alertGroups.overdue.length}
-                  </p>
-                </article>
-                <article className="border border-gold/35 bg-gold/10 p-5">
-                  <p className="text-xs uppercase tracking-[0.24em] text-gold">
-                    Vencem hoje
-                  </p>
-                  <p className="mt-3 text-2xl font-semibold text-gold-light">
-                    {alertGroups.today.length}
-                  </p>
-                </article>
-                <article className="border border-white/10 bg-black/25 p-5">
-                  <p className="text-xs uppercase tracking-[0.24em] text-stone-500">
-                    Total pendente
-                  </p>
-                  <p className="mt-3 text-2xl font-semibold text-gold-light">
-                    {formatCurrency(pendingAlertTotal)} em {pendingSales.length} pendencia
-                    {pendingSales.length === 1 ? "" : "s"}
-                  </p>
-                </article>
-              </div>
-
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {summaryCards.map(([label, value]) => (
-              <article key={label} className="premium-surface p-5">
-                <p className="text-xs uppercase tracking-[0.24em] text-stone-500">
-                  {label}
-                </p>
-                <p className="mt-3 text-2xl font-semibold text-gold-light">
-                  {value}
-                </p>
-              </article>
-            ))}
-          </div>
-
-          {hasMissingCost ? (
-            <p className="mt-4 border border-gold/25 bg-gold/10 p-4 text-sm leading-6 text-gold-light">
-              Alguns perfumes ainda estao sem custo cadastrado. O lucro pode nao estar preciso.
-            </p>
-          ) : null}
-
-          <div className="mt-8 grid gap-4 lg:grid-cols-[0.72fr_1.28fr]">
-            <section className="premium-surface p-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gold">
-                Custos e margem
-              </p>
-              <div className="mt-5 grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-                <div className="border border-white/10 bg-black/25 p-4">
-                  <p className="text-xs uppercase tracking-[0.2em] text-stone-500">
-                    Custo estimado tradicional
-                  </p>
-                  <p className="mt-2 text-xl font-semibold text-gold-light">
-                    {formatCurrency(
-                      getEstimatedUnitCost("tradicional", DEFAULT_COST_SETTINGS)
-                    )}
-                  </p>
-                </div>
-                <div className="border border-white/10 bg-black/25 p-4">
-                  <p className="text-xs uppercase tracking-[0.2em] text-stone-500">
-                    Custo estimado arabe
-                  </p>
-                  <p className="mt-2 text-xl font-semibold text-gold-light">
-                    {formatCurrency(
-                      getEstimatedUnitCost("arabe", DEFAULT_COST_SETTINGS)
-                    )}
-                  </p>
-                </div>
-                <div className="border border-white/10 bg-black/25 p-4">
-                  <p className="text-xs uppercase tracking-[0.2em] text-stone-500">
-                    Taxa de cartao configurada
-                  </p>
-                  <p className="mt-2 text-xl font-semibold text-gold-light">
-                    {DEFAULT_COST_SETTINGS.cardFeePercent.toFixed(1).replace(".", ",")}%
-                  </p>
-                </div>
-              </div>
-              <p className="mt-5 text-sm leading-7 text-stone-400">
-                Os valores sao estimativas para controle interno e podem ser
-                ajustados futuramente.
-              </p>
-            </section>
-
-            <section className="premium-surface p-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gold">
-                Como usar este painel
-              </p>
-              <div className="mt-5 grid gap-3 text-sm leading-7 text-stone-400 sm:grid-cols-2">
-                <p>Registre toda venda no momento em que entregar o perfume.</p>
-                <p>Use status pendente quando a pessoa for pagar depois.</p>
-                <p>Marque como pago quando receber.</p>
-                <p>Exporte CSV regularmente para backup.</p>
-                <p className="sm:col-span-2">
-                  Acompanhe lucro estimado para saber se a precificacao esta
-                  saudavel.
-                </p>
-              </div>
-            </section>
-          </div>
-
-            </>
-          ) : null}
-
-          {activeTab === "sales" ? (
-            <>
-          <div className="mt-8 grid gap-8 xl:grid-cols-[0.82fr_1.18fr]">
-            <form onSubmit={handleSubmit} className="premium-surface p-6">
-              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gold">
-                    Cadastro de venda
-                  </p>
-                  <h2 className="mt-3 text-2xl font-semibold text-white">
-                    Registrar atendimento
-                  </h2>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setForm(initialForm)}
-                  className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold"
-                >
-                  Limpar formulario
-                </button>
-              </div>
-
-              <div className="mt-6 grid gap-4">
-                <label>
-                  <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                    Cliente cadastrado
-                  </span>
-                  <select
-                    value={form.customerId}
-                    onChange={(event) => handleCustomerSelect(event.target.value)}
-                    className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
-                  >
-                    <option value="">Venda para cliente nao cadastrado</option>
-                    {customers.map((customer) => (
-                      <option key={customer.id} value={customer.id}>
-                        {customer.name}
-                        {customer.phone ? ` - ${customer.phone}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label>
-                  <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                    Nome do cliente
-                  </span>
-                  <input
-                    required
-                    value={form.customerName}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        customerName: event.target.value,
-                      }))
-                    }
-                    className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
-                  />
-                </label>
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label>
-                    <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                      Telefone do cliente
-                    </span>
-                    <input
-                      value={form.customerPhone}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          customerPhone: event.target.value,
-                        }))
-                      }
-                      className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
-                    />
-                  </label>
-
-                  <label>
-                    <span
-                      className={`text-xs uppercase tracking-[0.22em] ${
-                        needsDueDate ? "text-gold" : "text-stone-500"
-                      }`}
-                    >
-                      Data de vencimento
-                    </span>
-                    <input
-                      type="date"
-                      value={form.dueDate}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          dueDate: event.target.value,
-                        }))
-                      }
-                      className={`mt-2 min-h-11 w-full border bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold ${
-                        needsDueDate ? "border-gold bg-gold/10" : "border-gold/25"
-                      }`}
-                    />
-                  </label>
-                </div>
-
-                <label>
-                  <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                    Perfume vendido
-                  </span>
-                  <select
-                    value={form.perfumeSlug}
-                    onChange={(event) => handlePerfumeChange(event.target.value)}
-                    className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
-                  >
-                    {salePerfumeOptions.map((perfume) => (
-                      <option key={perfume.slug} value={perfume.slug}>
-                        {perfume.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <div className="border border-white/10 bg-black/25 p-4">
-                  <p className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                    Estoque atual
-                  </p>
-                  <p className="mt-2 text-lg font-semibold text-gold-light">
-                    {selectedStock.quantity} unidade
-                    {selectedStock.quantity === 1 ? "" : "s"}
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-stone-400">
-                    {selectedStockMessage}
-                  </p>
-                  {stockWarning ? (
-                    <p className="mt-3 text-sm leading-6 text-gold-light">
-                      {stockWarning}
-                    </p>
-                  ) : null}
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label>
-                    <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                      Tipo da linha
-                    </span>
-                    <select
-                      value={form.lineType}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          lineType: event.target.value as PerfumeLine,
-                        }))
-                      }
-                      className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
-                    >
-                      <option value="traditional">Tradicional</option>
-                      <option value="arabic_premium">Arabe Premium</option>
-                    </select>
-                  </label>
-
-                  <div>
-                    <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                      Preco automatico
-                    </span>
-                    <div className="mt-2 flex min-h-11 items-center border border-gold/25 bg-gold/10 px-4 text-sm font-semibold text-gold-light">
-                      {formatCurrency(unitPrice)}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <label>
-                    <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                      Quantidade
-                    </span>
-                    <input
-                      min={1}
-                      type="number"
-                      value={form.quantity}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          quantity: Number(event.target.value),
-                        }))
-                      }
-                      className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
-                    />
-                  </label>
-
-                  <label>
-                    <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                      Pagamento
-                    </span>
-                    <select
-                      value={form.paymentMethod}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          paymentMethod: event.target.value as PaymentMethod,
-                        }))
-                      }
-                      className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
-                    >
-                      <option value="dinheiro">Dinheiro</option>
-                      <option value="pix">Pix</option>
-                      <option value="cartão">Cartao</option>
-                      <option value="fiado">Fiado / receber depois</option>
-                    </select>
-                  </label>
-
-                  <label>
-                    <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                      Status
-                    </span>
-                    <select
-                      value={form.status}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          status: event.target.value as SaleStatus,
-                        }))
-                      }
-                      className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
-                    >
-                      <option value="pago">Pago</option>
-                      <option value="pendente">Pendente</option>
-                    </select>
-                  </label>
-                </div>
-
-                <div className="border border-gold/20 bg-gold/10 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
-                    Resumo da venda
-                  </p>
-                  <div className="mt-4 grid gap-3 text-sm text-stone-300 sm:grid-cols-2">
-                    <p>Valor total: {formatCurrency(preview.revenue)}</p>
-                    <p>Custo estimado: {formatCurrency(preview.estimatedCost)}</p>
-                    <p>Taxa cartao: {formatCurrency(preview.cardFee)}</p>
-                    <p>Lucro bruto: {formatCurrency(preview.grossProfit)}</p>
-                  </div>
-                </div>
-
-                <label>
-                  <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                    Observacao
-                  </span>
-                  <textarea
-                    value={form.notes}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        notes: event.target.value,
-                      }))
-                    }
-                    rows={4}
-                    className="mt-2 w-full resize-none border border-gold/25 bg-black/45 px-4 py-3 text-sm text-white outline-none transition focus:border-gold"
-                  />
-                </label>
-
-                <button
-                  type="submit"
-                  className="min-h-12 rounded-full bg-gold px-6 text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-gold-light"
-                >
-                  Registrar venda
-                </button>
-              </div>
-            </form>
-
-            <section className="premium-surface p-6">
-              <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gold">
-                    Vendas registradas
-                  </p>
-                  <h2 className="mt-3 text-2xl font-semibold text-white">
-                    Clientes, fiados e pagamentos
-                  </h2>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={exportCsv}
-                  className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold"
-                >
-                  Exportar CSV
-                </button>
-              </div>
-
-              <div className="mt-6">
-                <p className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                  Status
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {[
-                    ["todos", "Todos"],
-                    ["pagos", "Pagos"],
-                    ["pendentes", "Pendentes"],
-                  ].map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setStatusFilter(value as SaleFilter)}
-                      className={`min-h-10 rounded-full border px-4 text-xs font-semibold uppercase tracking-[0.14em] transition ${
-                        statusFilter === value
-                          ? "border-gold bg-gold text-black"
-                          : "border-gold/30 bg-gold/10 text-gold-light hover:border-gold-light"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-5">
-                <p className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                  Forma de pagamento
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {[
-                    ["todos", "Todos"],
-                    ["dinheiro", "Dinheiro"],
-                    ["pix", "Pix"],
-                    ["cartão", "Cartao"],
-                    ["fiado", "Fiado / receber depois"],
-                  ].map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setPaymentFilter(value as PaymentFilter)}
-                      className={`min-h-10 rounded-full border px-4 text-xs font-semibold uppercase tracking-[0.14em] transition ${
-                        paymentFilter === value
-                          ? "border-gold bg-gold text-black"
-                          : "border-gold/30 bg-gold/10 text-gold-light hover:border-gold-light"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-6 grid gap-3">
-                {filteredSales.length === 0 ? (
-                  <div className="border border-white/10 bg-black/25 p-6 text-center">
-                    <p className="text-sm text-stone-500">
-                      Nenhuma venda registrada neste filtro.
-                    </p>
-                  </div>
-                ) : (
-                  filteredSales.map((sale) => {
-                    const profit = saleProfit(sale);
-                    const isPaid = sale.status === "pago";
-                    const paymentMethod = normalizePaymentMethod(sale.paymentMethod);
-
-                    return (
-                      <article
-                        key={sale.id}
-                        className="border border-white/10 bg-black/25 p-5"
-                      >
-                        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-3">
-                              <h3 className="text-xl font-semibold text-white">
-                                {sale.customerName}
-                              </h3>
-                              <span
-                                className={`border px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${
-                                  isPaid
-                                    ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
-                                    : "border-gold/35 bg-gold/10 text-gold-light"
-                                }`}
-                              >
-                                {statusLabels[sale.status]}
-                              </span>
-                            </div>
-                            <p className="mt-3 text-sm text-stone-300">
-                              {sale.perfumeName} &bull; {sale.quantity} un. &bull;{" "}
-                              {formatCurrency(profit.revenue)}
-                            </p>
-                            <p className="mt-2 text-sm text-stone-500">
-                              {paymentLabels[paymentMethod]} &bull;{" "}
-                              {formatDate(sale.createdAt)}
-                            </p>
-                            {sale.customerPhone || sale.dueDate ? (
-                              <p className="mt-2 text-sm text-gold-light">
-                                {sale.customerPhone
-                                  ? `WhatsApp: ${sale.customerPhone}`
-                                  : "Sem telefone"}{" "}
-                                &bull; Vencimento: {formatDateOnly(sale.dueDate)}
-                              </p>
-                            ) : null}
-
-                            <div className="mt-4 grid gap-2 text-sm text-stone-300 sm:grid-cols-2">
-                              <p>Venda: {formatCurrency(profit.revenue)}</p>
-                              <p>Custo: {formatCurrency(profit.estimatedCost)}</p>
-                              <p>
-                                Taxa cartao: {formatCurrency(profit.cardFee)}
-                              </p>
-                              <p>
-                                Lucro estimado:{" "}
-                                {formatCurrency(profit.grossProfit)}
-                              </p>
-                              <p>Margem: {formatPercent(profit.marginPercent)}</p>
-                            </div>
-
-                            {sale.notes ? (
-                              <p className="mt-3 leading-7 text-stone-400">
-                                {sale.notes}
-                              </p>
-                            ) : null}
-                          </div>
-
-                          <div className="flex flex-wrap gap-2">
-                            {!isPaid ? (
-                              <button
-                                type="button"
-                                onClick={() => markAsPaid(sale.id)}
-                                className="min-h-10 rounded-full border border-emerald-400/30 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-300 transition hover:bg-emerald-400/10"
-                              >
-                                Marcar como pago
-                              </button>
-                            ) : null}
-                            <button
-                              type="button"
-                              onClick={() => deleteSale(sale.id)}
-                              className="min-h-10 rounded-full border border-red-400/30 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-red-300 transition hover:bg-red-400/10"
-                            >
-                              Excluir venda
-                            </button>
-                          </div>
-                        </div>
-                      </article>
-                    );
-                  })
-                )}
-              </div>
-            </section>
-          </div>
-
-          <section className="mt-8 premium-surface p-6">
-            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gold">
-                  Clientes e pendencias
-                </p>
-                <h2 className="mt-3 text-2xl font-semibold text-white">
-                  Controle de fiados e recebimentos
-                </h2>
-              </div>
-              <button
-                type="button"
-                onClick={exportCustomersCsv}
-                className="min-h-10 w-fit rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold"
-              >
-                Exportar clientes CSV
-              </button>
-            </div>
-
-            <div className="mt-6 grid gap-6 xl:grid-cols-[0.74fr_1.26fr]">
-              <form
-                onSubmit={handleCustomerSubmit}
-                className="border border-white/10 bg-black/25 p-5"
-              >
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
-                  Cadastro rapido de cliente
-                </p>
-                <div className="mt-5 grid gap-4">
-                  <label>
-                    <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                      Nome do cliente
-                    </span>
-                    <input
-                      value={customerForm.name}
-                      onChange={(event) =>
-                        setCustomerForm((current) => ({
-                          ...current,
-                          name: event.target.value,
-                        }))
-                      }
-                      className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
-                    />
-                  </label>
-                  <label>
-                    <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                      Telefone/WhatsApp opcional
-                    </span>
-                    <input
-                      value={customerForm.phone}
-                      onChange={(event) =>
-                        setCustomerForm((current) => ({
-                          ...current,
-                          phone: event.target.value,
-                        }))
-                      }
-                      className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
-                    />
-                  </label>
-                  <label>
-                    <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                      Observacao opcional
-                    </span>
-                    <textarea
-                      rows={3}
-                      value={customerForm.notes}
-                      onChange={(event) =>
-                        setCustomerForm((current) => ({
-                          ...current,
-                          notes: event.target.value,
-                        }))
-                      }
-                      className="mt-2 w-full resize-none border border-gold/25 bg-black/45 px-4 py-3 text-sm text-white outline-none transition focus:border-gold"
-                    />
-                  </label>
-                  {customerMessage ? (
-                    <p className="text-sm text-gold-light">{customerMessage}</p>
-                  ) : null}
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="submit"
-                      className="min-h-10 rounded-full bg-gold px-4 text-xs font-semibold uppercase tracking-[0.16em] text-black transition hover:bg-gold-light"
-                    >
-                      Salvar cliente
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCustomerForm(initialCustomerForm);
-                        setCustomerMessage("");
-                      }}
-                      className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold"
-                    >
-                      Limpar formulario
-                    </button>
-                  </div>
-                </div>
-              </form>
-
-              <div>
-                <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
-                  <label>
-                    <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                      Buscar cliente
-                    </span>
-                    <input
-                      value={customerQuery}
-                      onChange={(event) => setCustomerQuery(event.target.value)}
-                      className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
-                    />
-                  </label>
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                      Filtros
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {[
-                        ["todos", "Todos"],
-                        ["com_pendencia", "Com pendencia"],
-                        ["sem_pendencia", "Sem pendencia"],
-                        ["com_telefone", "Com telefone"],
-                        ["sem_telefone", "Sem telefone"],
-                      ].map(([value, label]) => (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() =>
-                            setCustomerFilter(value as CustomerFilter)
-                          }
-                          className={`min-h-10 rounded-full border px-4 text-xs font-semibold uppercase tracking-[0.14em] transition ${
-                            customerFilter === value
-                              ? "border-gold bg-gold text-black"
-                              : "border-gold/30 bg-gold/10 text-gold-light hover:border-gold-light"
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-5 grid gap-3">
-                  {filteredCustomerSummaries.length === 0 ? (
-                    <div className="border border-white/10 bg-black/25 p-6 text-center">
-                      <p className="text-sm text-stone-500">
-                        Nenhum cliente encontrado neste filtro.
-                      </p>
-                    </div>
-                  ) : (
-                    filteredCustomerSummaries.map((customer) => {
-                      const hasPending = customer.totalPending > 0;
-                      const isExpanded = expandedCustomer === customer.key;
-
-                      return (
-                        <article
-                          key={customer.key}
-                          className="border border-white/10 bg-black/25 p-5"
-                        >
-                          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-3">
-                                <h3 className="text-xl font-semibold text-white">
-                                  {customer.name}
-                                </h3>
-                                <span
-                                  className={`border px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
-                                    hasPending
-                                      ? "border-gold/35 bg-gold/10 text-gold-light"
-                                      : "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
-                                  }`}
-                                >
-                                  {hasPending ? "Deve pagar" : "Sem pendencias"}
-                                </span>
-                              </div>
-                              {customer.phone ? (
-                                <p className="mt-2 text-sm text-stone-500">
-                                  {customer.phone}
-                                </p>
-                              ) : null}
-                              <div className="mt-4 grid gap-2 text-sm text-stone-300 sm:grid-cols-2 lg:grid-cols-3">
-                                <p>
-                                  Total comprado:{" "}
-                                  {formatCurrency(customer.totalBought)}
-                                </p>
-                                <p>
-                                  Recebido:{" "}
-                                  {formatCurrency(customer.totalReceived)}
-                                </p>
-                                <p>
-                                  Pendente:{" "}
-                                  {formatCurrency(customer.totalPending)}
-                                </p>
-                                <p>Compras: {customer.purchaseCount}</p>
-                                <p>
-                                  Ultima compra:{" "}
-                                  {customer.lastPurchase
-                                    ? formatDate(customer.lastPurchase)
-                                    : "Sem compras"}
-                                </p>
-                              </div>
-                              {customer.notes ? (
-                                <p className="mt-3 text-sm leading-6 text-stone-500">
-                                  {customer.notes}
-                                </p>
-                              ) : null}
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setExpandedCustomer(
-                                    isExpanded ? null : customer.key
-                                  )
-                                }
-                                className="min-h-10 rounded-full border border-white/15 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-stone-300 transition hover:border-gold/50 hover:text-gold-light"
-                              >
-                                {isExpanded ? "Fechar historico" : "Ver historico"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  markCustomerPendingAsPaid(customer.name)
-                                }
-                                className="min-h-10 rounded-full border border-emerald-400/30 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-300 transition hover:bg-emerald-400/10"
-                              >
-                                Marcar pendencias como pagas
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => copyChargeMessage(customer)}
-                                className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold"
-                              >
-                                Copiar mensagem de cobranca
-                              </button>
-                            </div>
-                          </div>
-
-                          {isExpanded ? (
-                            <div className="mt-5 grid gap-2 border-t border-white/10 pt-5">
-                              {customer.sales.length === 0 ? (
-                                <p className="text-sm text-stone-500">
-                                  Cliente ainda sem compras registradas.
-                                </p>
-                              ) : (
-                                customer.sales.map((sale) => {
-                                  const profit = saleProfit(sale);
-                                  const paymentMethod = normalizePaymentMethod(
-                                    sale.paymentMethod
-                                  );
-
-                                  return (
-                                    <div
-                                      key={sale.id}
-                                      className="border border-white/10 bg-black/25 p-4 text-sm text-stone-300"
-                                    >
-                                      <p className="font-semibold text-white">
-                                        {sale.perfumeName}
-                                      </p>
-                                      <p className="mt-2 text-stone-500">
-                                        {formatDate(sale.createdAt)} &bull;{" "}
-                                        {sale.quantity} un. &bull;{" "}
-                                        {formatCurrency(profit.revenue)} &bull;{" "}
-                                        {statusLabels[sale.status]} &bull;{" "}
-                                        {paymentLabels[paymentMethod]}
-                                      </p>
-                                      {sale.notes ? (
-                                        <p className="mt-2 leading-6">
-                                          {sale.notes}
-                                        </p>
-                                      ) : null}
-                                    </div>
-                                  );
-                                })
-                              )}
-                            </div>
-                          ) : null}
-                        </article>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="mt-8 premium-surface p-6">
+        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+          <div>
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gold">
-              Como controlar fiados
+              Painel interno
             </p>
-            <div className="mt-5 grid gap-3 text-sm leading-7 text-stone-400 sm:grid-cols-2">
-              <p>Cadastre clientes frequentes.</p>
-              <p>Registre toda venda no momento da entrega.</p>
-              <p>
-                Use status pendente quando a pessoa for pagar depois.
-              </p>
-              <p>Quando receber, marque as pendencias como pagas.</p>
-              <p>Exporte CSV regularmente para backup.</p>
-              <p>Este controle e local e fica salvo apenas neste navegador.</p>
-            </div>
-          </section>
-
-          <section className="mt-8 premium-surface p-6">
-            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gold">
-                  Controle de estoque
-                </p>
-                <h2 className="mt-3 text-2xl font-semibold text-white">
-                  Perfumes, quantidades e alertas
-                </h2>
-              </div>
+            <h1 className="mt-3 text-3xl font-semibold text-white sm:text-4xl">
+              Controle de vendas, estoque e lucro
+            </h1>
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-stone-400">
+              Registro local para vendas, fiados, pagamentos, custos e estoque
+              da Amaro dos Reis Parfum.
+            </p>
+          </div>
+          <div className="grid gap-3">
+            <div className="flex flex-wrap gap-3">
               <button
                 type="button"
-                onClick={exportStockCsv}
-                className="min-h-10 w-fit rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold"
+                onClick={exportSalesCsv}
+                disabled={sales.length === 0}
+                className="min-h-11 rounded-md border border-gold/45 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold hover:bg-gold/10 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                Exportar CSV
+              </button>
+              <button
+                type="button"
+                onClick={exportInventoryCsv}
+                disabled={inventory.length === 0}
+                className="min-h-11 rounded-md border border-gold/45 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold hover:bg-gold/10 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 Exportar estoque CSV
               </button>
-            </div>
-
-            <div className="mt-6 flex flex-wrap gap-2">
-              {[
-                ["todos", "Todos"],
-                ["em_estoque", "Em estoque"],
-                ["poucas", "Poucas unidades"],
-                ["sem_estoque", "Sem estoque"],
-                ["traditional", "Tradicional"],
-                ["arabic_premium", "Arabe"],
-              ].map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setStockFilter(value as StockFilter)}
-                  className={`min-h-10 rounded-full border px-4 text-xs font-semibold uppercase tracking-[0.14em] transition ${
-                    stockFilter === value
-                      ? "border-gold bg-gold text-black"
-                      : "border-gold/30 bg-gold/10 text-gold-light hover:border-gold-light"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {filteredStockRows.map(({ perfume, item, status }) => {
-                const slug = perfumeSlug(perfume);
-                const statusClass =
-                  status === "Em estoque"
-                    ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
-                    : status === "Poucas unidades"
-                      ? "border-gold/35 bg-gold/10 text-gold-light"
-                      : "border-red-400/30 bg-red-400/10 text-red-300";
-
-                return (
-                  <article key={perfume.name} className="border border-white/10 bg-black/25 p-5">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.22em] text-gold/80">
-                          {perfume.collection}
-                        </p>
-                        <h3 className="mt-3 text-xl font-semibold uppercase tracking-[0.08em] text-white">
-                          {perfume.name}
-                        </h3>
-                      </div>
-                      <span
-                        className={`shrink-0 border px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${statusClass}`}
-                      >
-                        {status}
-                      </span>
-                    </div>
-
-                    <div className="mt-5 grid gap-3 text-sm text-stone-300 sm:grid-cols-2">
-                      <p>Tipo: {lineLabels[perfume.line]}</p>
-                      <p>Preco: {formatCurrency(getLinePrice(perfume.line))}</p>
-                      <p>Estoque atual: {item.quantity}</p>
-                      <p>Estoque minimo: {item.minQuantity}</p>
-                    </div>
-
-                    <p className="mt-4 text-xs text-stone-500">
-                      Atualizado: {item.updatedAt ? formatDate(item.updatedAt) : "Ainda nao alterado"}
-                    </p>
-
-                    <div className="mt-5 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => updateStockQuantity(slug, 1)}
-                        className="min-h-9 rounded-full border border-gold/35 px-3 text-xs font-semibold text-gold-light transition hover:border-gold"
-                      >
-                        +1
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => updateStockQuantity(slug, -1)}
-                        className="min-h-9 rounded-full border border-gold/35 px-3 text-xs font-semibold text-gold-light transition hover:border-gold"
-                      >
-                        -1
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => editStockQuantity(slug)}
-                        className="min-h-9 rounded-full border border-white/15 px-3 text-xs font-semibold text-stone-300 transition hover:border-gold/50 hover:text-gold-light"
-                      >
-                        Editar quantidade
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => editMinQuantity(slug)}
-                        className="min-h-9 rounded-full border border-white/15 px-3 text-xs font-semibold text-stone-300 transition hover:border-gold/50 hover:text-gold-light"
-                      >
-                        Editar estoque minimo
-                      </button>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          </section>
-
-          <section className="mt-8 premium-surface p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gold">
-              Como usar o estoque
-            </p>
-            <div className="mt-5 grid gap-3 text-sm leading-7 text-stone-400 sm:grid-cols-2">
-              <p>Atualize o estoque sempre que produzir novos perfumes.</p>
-              <p>
-                Ao registrar uma venda, o sistema baixa automaticamente a
-                quantidade.
-              </p>
-              <p>Se vender sob encomenda, o estoque pode ficar zerado.</p>
-              <p>Exporte CSV regularmente para backup.</p>
-            </div>
-          </section>
-
-          <section className="mt-8 premium-surface p-6">
-            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gold">
-                  Backup e seguranca dos dados
-                </p>
-                <h2 className="mt-3 text-2xl font-semibold text-white">
-                  Exporte e restaure os dados locais
-                </h2>
-              </div>
               <button
                 type="button"
                 onClick={exportFullBackup}
-                className="min-h-10 w-fit rounded-full bg-gold px-5 text-xs font-semibold uppercase tracking-[0.16em] text-black transition hover:bg-gold-light"
+                className="min-h-11 rounded-md border border-gold/45 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold hover:bg-gold/10"
               >
-                Baixar backup completo
+                Baixar backup antes de limpar
+              </button>
+              <button
+                type="button"
+                onClick={clearAllSales}
+                disabled={sales.length === 0}
+                className="min-h-11 rounded-md border border-red-400/35 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-red-200 transition hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                Limpar todas as vendas
               </button>
             </div>
+            <p className="max-w-xl text-xs leading-5 text-stone-500">
+              Antes de apagar informações, exporte um backup completo.
+            </p>
+          </div>
+        </div>
 
-            <div className="mt-6 grid gap-4 lg:grid-cols-3">
-              <article className="border border-white/10 bg-black/25 p-5">
-                <p className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                  Ultimo backup
-                </p>
-                <p className="mt-3 text-lg font-semibold text-gold-light">
-                  {backupInfo?.lastBackupAt
-                    ? formatDate(backupInfo.lastBackupAt)
-                    : "Nenhum backup registrado neste navegador."}
-                </p>
-              </article>
+        <nav className="flex flex-wrap gap-2 rounded-lg border border-gold/20 bg-white/[0.035] p-2">
+          {[
+            ["#vendas", "Vendas"],
+            ["#estoque-e-custos", "Estoque e custos"],
+            ["#relatorios", "Relatórios"],
+            ["#backup", "Backup"],
+            ["#sync", "Sincronização"],
+          ].map(([href, label]) => (
+            <a
+              key={href}
+              href={href}
+              className="min-h-10 rounded-md border border-transparent px-4 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-stone-300 transition hover:border-gold/40 hover:text-gold-light"
+            >
+              {label}
+            </a>
+          ))}
+        </nav>
 
-              <article className="border border-white/10 bg-black/25 p-5 lg:col-span-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
-                  Importante
+        <section id="relatorios" className="scroll-mt-28">
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
+                Relatórios
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold text-white">
+                Resumo financeiro
+              </h2>
+            </div>
+            <div className="grid gap-2">
+              <button
+                type="button"
+                onClick={copyFinancialSummary}
+                className="min-h-11 rounded-md border border-gold/45 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold hover:bg-gold/10"
+              >
+                Copiar resumo financeiro
+              </button>
+              {summaryCopyMessage ? (
+                <p className="text-xs text-gold-light">{summaryCopyMessage}</p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {reportCards.map(([label, value]) => (
+              <article
+                key={label}
+                className="rounded-lg border border-gold/20 bg-white/[0.045] p-5"
+              >
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                  {label}
                 </p>
-                <div className="mt-4 grid gap-2 text-sm leading-7 text-stone-400 sm:grid-cols-2">
-                  <p>
-                    Os dados deste painel ficam salvos apenas neste navegador.
-                  </p>
-                  <p>
-                    Se limpar dados do navegador, trocar de computador ou
-                    formatar a maquina, voce pode perder as informacoes.
-                  </p>
-                  <p>Baixe um backup completo regularmente.</p>
-                  <p>
-                    Guarde o arquivo em local seguro, como Google Drive,
-                    pendrive ou pasta de documentos.
-                  </p>
-                </div>
+                <p className="mt-3 text-2xl font-semibold text-white">{value}</p>
               </article>
+            ))}
+          </div>
+
+          <div className="mt-5 rounded-lg border border-white/10 bg-white/[0.035] p-5">
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                  Atenção de estoque
+                </p>
+                <h3 className="mt-2 text-xl font-semibold text-white">
+                  Perfumes em baixo estoque
+                </h3>
+              </div>
+              <p className="text-sm text-gold-light">
+                {lowStockItems.length} item{lowStockItems.length === 1 ? "" : "s"}
+              </p>
+            </div>
+            <div className="mt-4 grid gap-3">
+              {lowStockItems.length === 0 ? (
+                <p className="text-sm text-stone-500">
+                  Nenhum perfume com baixo estoque no momento.
+                </p>
+              ) : (
+                lowStockItems.map((item) => (
+                  <div
+                    key={item.perfumeSlug}
+                    className="flex flex-col justify-between gap-2 rounded-md border border-white/10 bg-black/35 p-4 sm:flex-row sm:items-center"
+                  >
+                    <div>
+                      <p className="font-semibold text-white">{item.perfumeName}</p>
+                      <p className="mt-1 text-sm text-stone-400">
+                        {lineLabel(item.lineType)} • estoque {item.stockQuantity} •
+                        mínimo {item.minimumStock}
+                      </p>
+                    </div>
+                    <span
+                      className={`w-fit rounded-md border px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] ${inventoryStatusClass(
+                        getInventoryStatus(item)
+                      )}`}
+                    >
+                      {getInventoryStatus(item)}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="backup"
+          className="scroll-mt-28 rounded-lg border border-gold/20 bg-white/[0.045] p-5 sm:p-6"
+        >
+          <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-start">
+            <div className="max-w-3xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
+                Backup e segurança dos dados
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold text-white">
+                Proteja suas vendas e seu estoque
+              </h2>
+              <p className="mt-4 text-sm leading-7 text-stone-400">
+                Enquanto o sistema ainda não estiver integrado ao Supabase, os
+                dados ficam salvos apenas neste navegador. Faça backups
+                regularmente para não perder suas vendas e estoque.
+              </p>
+              <p className="mt-3 text-sm leading-7 text-gold-light">
+                Próxima fase planejada: sincronização com Supabase para acessar
+                os dados em mais de um computador.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={exportFullBackup}
+              className="min-h-11 rounded-md bg-gold px-5 text-xs font-semibold uppercase tracking-[0.16em] text-black transition hover:bg-gold-light"
+            >
+              Exportar backup completo
+            </button>
+          </div>
+
+          <div className="mt-6 rounded-lg border border-gold/20 bg-black/35 p-5">
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gold">
+                  Status da futura integração
+                </p>
+                <p className="mt-3 text-lg font-semibold text-white">
+                  Supabase configurado: {supabaseConfigured ? "Sim" : "Não"}
+                </p>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-400">
+                  {supabaseConfigured
+                    ? "As variáveis do Supabase estão presentes. A conexão real será ativada em um pacote futuro."
+                    : "Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY quando chegar a fase de integração."}
+                </p>
+                <Link
+                  href="/admin/supabase-status"
+                  className="mt-4 inline-flex min-h-10 items-center rounded-md border border-gold/45 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold hover:bg-gold/10"
+                >
+                  Ver status Supabase
+                </Link>
+              </div>
+              <span
+                className={`w-fit rounded-md border px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] ${
+                  supabaseConfigured
+                    ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
+                    : "border-gold/35 bg-gold/10 text-gold-light"
+                }`}
+              >
+                {supabaseConfigured ? "Pronto para próxima fase" : "Local ativo"}
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <div className="rounded-lg border border-white/10 bg-black/35 p-5">
+              <label>
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                  Importar arquivo JSON
+                </span>
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  onChange={handleBackupFileChange}
+                  className="mt-3 w-full rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-stone-300 file:mr-4 file:rounded-md file:border-0 file:bg-gold file:px-4 file:py-2 file:text-xs file:font-semibold file:uppercase file:tracking-[0.12em] file:text-black"
+                />
+              </label>
+              <p className="mt-3 text-xs leading-5 text-stone-500">
+                O arquivo precisa ser um backup compatível com
+                amaro_backup_v1 e conter vendas e estoque em listas.
+              </p>
             </div>
 
-            <div className="mt-6 grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
-              <div className="border border-white/10 bg-black/25 p-5">
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
-                  Exportacoes parciais
-                </p>
-                <div className="mt-5 flex flex-wrap gap-2">
+            <div className="rounded-lg border border-white/10 bg-black/35 p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                Prévia do backup
+              </p>
+              {backupImport ? (
+                <div className="mt-4 grid gap-3 text-sm text-stone-300">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-md border border-white/10 bg-white/[0.035] p-4">
+                      <p className="text-xs uppercase tracking-[0.14em] text-stone-500">
+                        Vendas
+                      </p>
+                      <p className="mt-2 text-xl font-semibold text-white">
+                        {backupImport.sales.length}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-white/10 bg-white/[0.035] p-4">
+                      <p className="text-xs uppercase tracking-[0.14em] text-stone-500">
+                        Estoque
+                      </p>
+                      <p className="mt-2 text-xl font-semibold text-white">
+                        {backupImport.inventory.length}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-white/10 bg-white/[0.035] p-4">
+                      <p className="text-xs uppercase tracking-[0.14em] text-stone-500">
+                        Data
+                      </p>
+                      <p className="mt-2 text-sm font-semibold text-white">
+                        {backupImport.backupDate
+                          ? formatDate(backupImport.backupDate)
+                          : "Sem data"}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-stone-500">
+                    Arquivo selecionado: {backupFileName || "backup JSON"}
+                  </p>
                   <button
                     type="button"
-                    onClick={() => exportPartialBackup("sales")}
-                    className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold"
+                    onClick={restoreBackup}
+                    className="min-h-11 w-fit rounded-md border border-gold/45 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold hover:bg-gold/10"
                   >
-                    Exportar apenas vendas
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => exportPartialBackup("stock")}
-                    className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold"
-                  >
-                    Exportar apenas estoque
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => exportPartialBackup("customers")}
-                    className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold"
-                  >
-                    Exportar apenas clientes
+                    Restaurar backup
                   </button>
                 </div>
+              ) : (
+                <p className="mt-4 text-sm leading-6 text-stone-500">
+                  Selecione um arquivo de backup para conferir a quantidade de
+                  vendas, itens de estoque e data antes de restaurar.
+                </p>
+              )}
+            </div>
+          </div>
 
-                <label className="mt-6 block">
-                  <span className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
-                    Restaurar backup
+          {backupMessage ? (
+            <p className="mt-5 rounded-md border border-emerald-400/30 bg-emerald-400/10 p-3 text-sm text-emerald-300">
+              {backupMessage}
+            </p>
+          ) : null}
+          {backupError ? (
+            <p className="mt-5 rounded-md border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-200">
+              {backupError}
+            </p>
+          ) : null}
+        </section>
+
+        <section
+          id="sync"
+          className="scroll-mt-28 rounded-lg border border-gold/20 bg-white/[0.045] p-5 sm:p-6"
+        >
+          <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-start">
+            <div className="max-w-3xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
+                Sincronização com Supabase
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold text-white">
+                Envio e restauração manual
+              </h2>
+              <p className="mt-4 text-sm leading-7 text-stone-400">
+                Antes de sincronizar, exporte um backup completo. A
+                sincronização não apaga seus dados locais automaticamente.
+              </p>
+              <p className="mt-3 text-sm leading-7 text-stone-500">
+                Use esta área apenas depois de aplicar a migração de sync no
+                Supabase e configurar as variáveis privadas do servidor.
+              </p>
+            </div>
+            <div className="rounded-md border border-gold/25 bg-black/35 px-4 py-3 text-sm text-gold-light">
+              Última sincronização:{" "}
+              <span className="font-semibold text-white">
+                {lastSyncAt ? formatDate(lastSyncAt) : "Ainda não sincronizado"}
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <div className="rounded-lg border border-white/10 bg-black/35 p-5">
+              <label>
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                  Token de sincronização
+                </span>
+                <input
+                  type="password"
+                  value={syncToken}
+                  placeholder="Token de sincronização"
+                  autoComplete="off"
+                  onChange={(event) => setSyncToken(event.target.value)}
+                  className="mt-2 w-full rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-stone-600 focus:border-gold"
+                />
+              </label>
+              <p className="mt-3 text-xs leading-5 text-stone-500">
+                O token fica salvo apenas nesta sessão do navegador. A chave
+                privada do Supabase permanece somente no servidor.
+              </p>
+
+              <div className="mt-5 grid gap-3">
+                <button
+                  type="button"
+                  onClick={checkPrivateConnection}
+                  disabled={isSyncBusy}
+                  className="min-h-11 rounded-md border border-gold/45 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold hover:bg-gold/10 disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  Verificar conexão privada
+                </button>
+                <button
+                  type="button"
+                  onClick={pushLocalDataToSupabase}
+                  disabled={isSyncBusy}
+                  className="min-h-11 rounded-md bg-gold px-4 text-xs font-semibold uppercase tracking-[0.16em] text-black transition hover:bg-gold-light disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  Enviar dados locais para Supabase
+                </button>
+                <button
+                  type="button"
+                  onClick={pullDataFromSupabase}
+                  disabled={isSyncBusy}
+                  className="min-h-11 rounded-md border border-gold/45 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold hover:bg-gold/10 disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  Buscar dados do Supabase
+                </button>
+                <button
+                  type="button"
+                  onClick={restorePulledData}
+                  disabled={isSyncBusy || !pulledSyncData}
+                  className="min-h-11 rounded-md border border-red-400/35 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-red-200 transition hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  Restaurar dados baixados do Supabase
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-white/10 bg-black/35 p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                Estado da sincronização
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-md border border-white/10 bg-white/[0.035] p-4">
+                  <p className="text-xs uppercase tracking-[0.14em] text-stone-500">
+                    Dados locais
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-white">
+                    {sales.length} vendas / {inventory.length} estoque
+                  </p>
+                </div>
+                <div className="rounded-md border border-white/10 bg-white/[0.035] p-4">
+                  <p className="text-xs uppercase tracking-[0.14em] text-stone-500">
+                    Prévia baixada
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-white">
+                    {pulledSyncData
+                      ? `${pulledSyncData.sales.length} vendas / ${pulledSyncData.inventory.length} estoque`
+                      : "Nenhuma prévia"}
+                  </p>
+                </div>
+              </div>
+
+              {syncStatus ? (
+                <div className="mt-4 rounded-md border border-gold/20 bg-gold/10 p-4 text-sm leading-6 text-gold-light">
+                  <p>
+                    Supabase privado:{" "}
+                    <span className="font-semibold text-white">
+                      {syncStatus.configured ? "Configurado" : "Não configurado"}
+                    </span>
+                  </p>
+                  <p>
+                    Vendas no Supabase:{" "}
+                    <span className="font-semibold text-white">
+                      {syncStatus.salesCount ?? 0}
+                    </span>
+                  </p>
+                  <p>
+                    Itens de estoque no Supabase:{" "}
+                    <span className="font-semibold text-white">
+                      {syncStatus.inventoryCount ?? 0}
+                    </span>
+                  </p>
+                  {syncStatus.message ? <p>{syncStatus.message}</p> : null}
+                </div>
+              ) : null}
+
+              {isSyncBusy ? (
+                <p className="mt-4 text-sm text-stone-400">
+                  Processando sincronização...
+                </p>
+              ) : null}
+
+              {syncMessage ? (
+                <p className="mt-4 rounded-md border border-emerald-400/30 bg-emerald-400/10 p-3 text-sm text-emerald-300">
+                  {syncMessage}
+                </p>
+              ) : null}
+              {syncError ? (
+                <p className="mt-4 rounded-md border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-200">
+                  {syncError}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="vendas"
+          className="grid scroll-mt-28 gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)]"
+        >
+          <form
+            onSubmit={registerSale}
+            className="rounded-lg border border-gold/20 bg-white/[0.045] p-5 sm:p-6"
+          >
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
+                Vendas
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold text-white">
+                Registrar venda
+              </h2>
+            </div>
+
+            <div className="mt-6 grid gap-4">
+              <label>
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                  Nome do cliente
+                </span>
+                <input
+                  value={saleForm.customerName}
+                  onChange={(event) =>
+                    setSaleForm((current) => ({
+                      ...current,
+                      customerName: event.target.value,
+                    }))
+                  }
+                  required
+                  className="mt-2 w-full rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-white outline-none transition focus:border-gold"
+                />
+              </label>
+
+              <label>
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                  Perfume vendido
+                </span>
+                <select
+                  value={saleForm.perfumeSlug}
+                  onChange={(event) => handleSalePerfumeChange(event.target.value)}
+                  className="mt-2 w-full rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-white outline-none transition focus:border-gold"
+                >
+                  {perfumeCommerce.map((perfume) => (
+                    <option key={perfumeSlug(perfume)} value={perfumeSlug(perfume)}>
+                      {perfume.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label>
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                    Tipo da linha
+                  </span>
+                  <select
+                    value={saleForm.lineType}
+                    onChange={(event) =>
+                      setSaleForm((current) => ({
+                        ...current,
+                        lineType: event.target.value as LineType,
+                      }))
+                    }
+                    className="mt-2 w-full rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-white outline-none transition focus:border-gold"
+                  >
+                    {lineOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                    Preço de venda
                   </span>
                   <input
-                    type="file"
-                    accept=".json,application/json"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
+                    value={formatCurrency(saleUnitPrice)}
+                    readOnly
+                    className="mt-2 w-full rounded-md border border-gold/20 bg-black/70 px-4 py-3 text-sm text-gold-light outline-none"
+                  />
+                </label>
+              </div>
 
-                      if (file) {
-                        restoreBackupFile(file);
-                        event.target.value = "";
-                      }
-                    }}
-                    className="mt-3 block w-full text-sm text-stone-400 file:mr-4 file:min-h-10 file:rounded-full file:border-0 file:bg-gold file:px-4 file:text-xs file:font-semibold file:uppercase file:tracking-[0.14em] file:text-black"
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label>
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                    Quantidade
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={saleForm.quantity}
+                    onChange={(event) =>
+                      setSaleForm((current) => ({
+                        ...current,
+                        quantity: Math.max(1, Number(event.target.value) || 1),
+                      }))
+                    }
+                    className="mt-2 w-full rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-white outline-none transition focus:border-gold"
                   />
                 </label>
 
-                {backupMessage ? (
-                  <p className="mt-4 text-sm leading-6 text-gold-light">
-                    {backupMessage}
-                  </p>
-                ) : null}
+                <label>
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                    Total da venda
+                  </span>
+                  <input
+                    value={formatCurrency(saleUnitPrice * saleForm.quantity)}
+                    readOnly
+                    className="mt-2 w-full rounded-md border border-gold/20 bg-black/70 px-4 py-3 text-sm text-gold-light outline-none"
+                  />
+                </label>
               </div>
 
-              <div className="border border-white/10 bg-black/25 p-5">
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
-                  Quando fazer backup?
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label>
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                    Custo estimado
+                  </span>
+                  <input
+                    value={formatCurrency(saleUnitCost * saleForm.quantity)}
+                    readOnly
+                    className="mt-2 w-full rounded-md border border-gold/20 bg-black/70 px-4 py-3 text-sm text-gold-light outline-none"
+                  />
+                </label>
+
+                <label>
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                    Lucro estimado
+                  </span>
+                  <input
+                    value={formatCurrency(
+                      (saleUnitPrice - saleUnitCost) * saleForm.quantity
+                    )}
+                    readOnly
+                    className="mt-2 w-full rounded-md border border-gold/20 bg-black/70 px-4 py-3 text-sm text-gold-light outline-none"
+                  />
+                </label>
+              </div>
+
+              <label>
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                  Forma de pagamento
+                </span>
+                <select
+                  value={saleForm.paymentMethod}
+                  onChange={(event) =>
+                    handlePaymentMethodChange(event.target.value as PaymentMethod)
+                  }
+                  className="mt-2 w-full rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-white outline-none transition focus:border-gold"
+                >
+                  {paymentOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                  Status
+                </span>
+                <select
+                  value={saleForm.status}
+                  onChange={(event) =>
+                    setSaleForm((current) => ({
+                      ...current,
+                      status: event.target.value as SaleStatus,
+                    }))
+                  }
+                  className="mt-2 w-full rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-white outline-none transition focus:border-gold"
+                >
+                  {statusOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                  Observação
+                </span>
+                <textarea
+                  rows={4}
+                  value={saleForm.notes}
+                  onChange={(event) =>
+                    setSaleForm((current) => ({
+                      ...current,
+                      notes: event.target.value,
+                    }))
+                  }
+                  className="mt-2 w-full resize-none rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-white outline-none transition focus:border-gold"
+                />
+              </label>
+
+              {saleNotice ? (
+                <p className="rounded-md border border-gold/30 bg-gold/10 p-3 text-sm text-gold-light">
+                  {saleNotice}
                 </p>
-                <div className="mt-4 grid gap-2 text-sm leading-7 text-stone-400 sm:grid-cols-2">
-                  <p>Ao final de cada semana.</p>
-                  <p>Depois de registrar muitas vendas.</p>
-                  <p>Antes de trocar de computador.</p>
-                  <p>Antes de limpar navegador.</p>
-                  <p className="sm:col-span-2">
-                    Antes de grandes alteracoes no sistema.
-                  </p>
-                </div>
+              ) : null}
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <button
+                  type="submit"
+                  className="min-h-11 rounded-md bg-gold px-5 text-xs font-semibold uppercase tracking-[0.16em] text-black transition hover:bg-gold-light"
+                >
+                  Registrar venda
+                </button>
+                <button
+                  type="button"
+                  onClick={resetSaleForm}
+                  className="min-h-11 rounded-md border border-gold/35 px-5 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold"
+                >
+                  Limpar formulário
+                </button>
               </div>
             </div>
-          </section>
+          </form>
 
-            </>
-          ) : null}
-
-          {activeTab === "perfumes" ? (
-            <section className="premium-surface p-6">
-              <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gold">
-                    Perfumes
-                  </p>
-                  <h2 className="mt-3 text-2xl font-semibold text-white">
-                    Cadastro de perfumes
-                  </h2>
-                  <p className="mt-3 text-sm leading-7 text-stone-400">
-                    Controle de estoque, custo, preco de venda e margem.
-                  </p>
-                </div>
-                {isSupabaseMode ? (
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={importInitialPerfumes}
-                      disabled={isPerfumeLoading}
-                      className="min-h-10 w-fit rounded-full bg-gold px-4 text-xs font-semibold uppercase tracking-[0.16em] text-black transition hover:bg-gold-light disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Importar perfumes iniciais
-                    </button>
-                    <button
-                      type="button"
-                      onClick={loadSupabasePerfumes}
-                      disabled={isPerfumeLoading}
-                      className="min-h-10 w-fit rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isPerfumeLoading ? "Atualizando..." : "Atualizar perfumes"}
-                    </button>
-                  </div>
-                ) : null}
+          <section className="rounded-lg border border-gold/20 bg-white/[0.045] p-5 sm:p-6">
+            <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
+                  Vendas registradas
+                </p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">
+                  Lista de vendas
+                </h2>
               </div>
-
-              {!isSupabaseMode ? (
-                <div className="mt-6 border border-gold/25 bg-gold/10 p-5 text-sm leading-7 text-gold-light">
-                  O cadastro de perfumes estara disponivel quando o sistema online estiver configurado e voce estiver logado.
-                </div>
-              ) : (
-                <div className="mt-6 grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-                  <form
-                    onSubmit={handlePerfumeSubmit}
-                    className="border border-white/10 bg-black/25 p-5"
+              <div className="flex flex-wrap gap-2">
+                {saleFilters.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setFilter(option.value)}
+                    className={`min-h-10 rounded-md border px-4 text-xs font-semibold uppercase tracking-[0.14em] transition ${
+                      filter === option.value
+                        ? "border-gold bg-gold text-black"
+                        : "border-gold/25 text-gold-light hover:border-gold"
+                    }`}
                   >
-                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
-                      {editingPerfumeId ? "Editar perfume" : "Novo perfume"}
-                    </p>
-                    <div className="mt-5 grid gap-4">
-                      {[
-                        ["Nome autoral", "name"],
-                        ["Inspiracao olfativa", "inspiration"],
-                        ["Colecao", "collection"],
-                        ["Familia olfativa", "olfactiveFamily"],
-                        ["Notas de topo", "topNotes"],
-                        ["Notas de coracao", "heartNotes"],
-                        ["Notas de fundo", "baseNotes"],
-                        ["Descricao curta", "shortDescription"],
-                        ["Tags separadas por virgula", "tags"],
-                      ].map(([label, key]) => (
-                        <label key={key}>
-                          <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                            {label}
-                          </span>
-                          <input
-                            required={key === "name" || key === "collection"}
-                            value={String(perfumeForm[key as keyof PerfumeForm])}
-                            onChange={(event) =>
-                              setPerfumeForm((current) => ({
-                                ...current,
-                                [key]: event.target.value,
-                              }))
-                            }
-                            className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
-                          />
-                        </label>
-                      ))}
-
-                      <div className="grid gap-4 sm:grid-cols-3">
-                        <label>
-                          <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                            Categoria
-                          </span>
-                          <select
-                            value={perfumeForm.category}
-                            onChange={(event) =>
-                              setPerfumeForm((current) => ({
-                                ...current,
-                                category: event.target.value as PerfumeCategory,
-                              }))
-                            }
-                            className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
-                          >
-                            <option value="masculino">Masculino</option>
-                            <option value="feminino">Feminino</option>
-                            <option value="unissex">Unissex</option>
-                          </select>
-                        </label>
-                        <label>
-                          <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                            Tipo da linha
-                          </span>
-                          <select
-                            value={perfumeForm.bottleType}
-                            onChange={(event) =>
-                              setPerfumeForm((current) => ({
-                                ...current,
-                                bottleType: event.target.value as BottleType,
-                              }))
-                            }
-                            className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
-                          >
-                            <option value="tradicional">Tradicional</option>
-                            <option value="arabe">Arabe</option>
-                          </select>
-                        </label>
-                        <label>
-                          <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                            Disponibilidade
-                          </span>
-                          <select
-                            value={perfumeForm.availabilityStatus}
-                            onChange={(event) =>
-                              setPerfumeForm((current) => ({
-                                ...current,
-                                availabilityStatus: event.target.value as AvailabilityStatus,
-                              }))
-                            }
-                            className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
-                          >
-                            <option value="available">Disponivel</option>
-                            <option value="limited">Poucas unidades</option>
-                            <option value="on_order">Sob encomenda</option>
-                          </select>
-                        </label>
-                      </div>
-
-                      <div className="grid gap-4 sm:grid-cols-3">
-                        {[
-                          ["Preco", "price"],
-                          ["Custo", "costPrice"],
-                          ["Estoque", "stockQuantity"],
-                        ].map(([label, key]) => (
-                          <label key={key}>
-                            <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                              {label}
-                            </span>
-                            <input
-                              min={0}
-                              step={key === "stockQuantity" ? 1 : 0.01}
-                              type="number"
-                              value={String(perfumeForm[key as keyof PerfumeForm])}
-                              onChange={(event) =>
-                                setPerfumeForm((current) => ({
-                                  ...current,
-                                  [key]: event.target.value,
-                                }))
-                              }
-                              className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
-                            />
-                          </label>
-                        ))}
-                      </div>
-
-                      <section className="border border-gold/20 bg-black/30 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
-                          Fotos do perfume
-                        </p>
-                        <p className="mt-2 text-sm leading-6 text-stone-500">
-                          Envie imagens pelo Supabase Storage ou cole URLs
-                          publicas manualmente.
-                        </p>
-
-                        <div className="mt-5 grid gap-4">
-                          <label>
-                            <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                              URL da imagem principal
-                            </span>
-                            <input
-                              value={perfumeForm.imageUrl}
-                              onChange={(event) =>
-                                setPerfumeForm((current) => ({
-                                  ...current,
-                                  imageUrl: event.target.value,
-                                }))
-                              }
-                              className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
-                            />
-                          </label>
-
-                          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-                            <label>
-                              <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                                Enviar imagem principal
-                              </span>
-                              <input
-                                type="file"
-                                accept="image/png,image/jpeg,image/webp"
-                                onChange={(event) =>
-                                  setMainImageFile(event.target.files?.[0] ?? null)
-                                }
-                                className="mt-2 block w-full text-sm text-stone-400 file:mr-4 file:min-h-10 file:rounded-full file:border-0 file:bg-gold file:px-4 file:text-xs file:font-semibold file:uppercase file:tracking-[0.14em] file:text-black"
-                              />
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() => uploadSinglePerfumeImage("main")}
-                              disabled={uploadingImageKind !== null}
-                              className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {uploadingImageKind === "main"
-                                ? "Enviando..."
-                                : "Enviar imagem principal"}
-                            </button>
-                          </div>
-
-                          <label>
-                            <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                              URL da imagem conceitual
-                            </span>
-                            <input
-                              value={perfumeForm.conceptImageUrl}
-                              onChange={(event) =>
-                                setPerfumeForm((current) => ({
-                                  ...current,
-                                  conceptImageUrl: event.target.value,
-                                }))
-                              }
-                              className="mt-2 min-h-11 w-full border border-gold/25 bg-black/45 px-4 text-sm text-white outline-none transition focus:border-gold"
-                            />
-                          </label>
-
-                          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-                            <label>
-                              <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                                Enviar imagem conceitual
-                              </span>
-                              <input
-                                type="file"
-                                accept="image/png,image/jpeg,image/webp"
-                                onChange={(event) =>
-                                  setConceptImageFile(event.target.files?.[0] ?? null)
-                                }
-                                className="mt-2 block w-full text-sm text-stone-400 file:mr-4 file:min-h-10 file:rounded-full file:border-0 file:bg-gold file:px-4 file:text-xs file:font-semibold file:uppercase file:tracking-[0.14em] file:text-black"
-                              />
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() => uploadSinglePerfumeImage("concept")}
-                              disabled={uploadingImageKind !== null}
-                              className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {uploadingImageKind === "concept"
-                                ? "Enviando..."
-                                : "Enviar imagem conceitual"}
-                            </button>
-                          </div>
-
-                          <label>
-                            <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                              Galeria de imagens
-                            </span>
-                            <textarea
-                              rows={4}
-                              value={perfumeForm.galleryImageUrls}
-                              placeholder="Uma URL por linha"
-                              onChange={(event) =>
-                                setPerfumeForm((current) => ({
-                                  ...current,
-                                  galleryImageUrls: event.target.value,
-                                }))
-                              }
-                              className="mt-2 w-full resize-none border border-gold/25 bg-black/45 px-4 py-3 text-sm text-white outline-none transition placeholder:text-stone-600 focus:border-gold"
-                            />
-                          </label>
-
-                          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-                            <label>
-                              <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                                Enviar imagens da galeria
-                              </span>
-                              <input
-                                type="file"
-                                multiple
-                                accept="image/png,image/jpeg,image/webp"
-                                onChange={handleGalleryFileChange}
-                                className="mt-2 block w-full text-sm text-stone-400 file:mr-4 file:min-h-10 file:rounded-full file:border-0 file:bg-gold file:px-4 file:text-xs file:font-semibold file:uppercase file:tracking-[0.14em] file:text-black"
-                              />
-                            </label>
-                            <button
-                              type="button"
-                              onClick={uploadGalleryPerfumeImages}
-                              disabled={uploadingImageKind !== null}
-                              className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {uploadingImageKind === "gallery"
-                                ? "Enviando..."
-                                : "Enviar imagens da galeria"}
-                            </button>
-                          </div>
-
-                          {galleryImageFiles.length > 0 ? (
-                            <p className="text-sm text-stone-400">
-                              {galleryImageFiles.length} arquivo
-                              {galleryImageFiles.length === 1 ? "" : "s"} selecionado
-                              {galleryImageFiles.length === 1 ? "" : "s"}.
-                            </p>
-                          ) : null}
-
-                          {imageUploadMessage ? (
-                            <p className="text-sm leading-6 text-gold-light">
-                              {imageUploadMessage}
-                            </p>
-                          ) : null}
-
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            {perfumeForm.imageUrl ? (
-                              <div className="border border-white/10 bg-black/35 p-3">
-                                <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
-                                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gold">
-                                    Imagem principal
-                                  </p>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setPerfumeForm((current) => ({
-                                        ...current,
-                                        imageUrl: "",
-                                      }))
-                                    }
-                                    className="min-h-8 w-fit rounded-full border border-red-400/30 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-red-300 transition hover:bg-red-400/10"
-                                  >
-                                    Limpar imagem principal
-                                  </button>
-                                </div>
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={perfumeForm.imageUrl}
-                                  alt="Imagem principal"
-                                  onError={(event) => {
-                                    event.currentTarget.style.display = "none";
-                                  }}
-                                  className="mt-3 h-32 w-full object-contain"
-                                />
-                              </div>
-                            ) : null}
-                            {perfumeForm.conceptImageUrl ? (
-                              <div className="border border-white/10 bg-black/35 p-3">
-                                <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
-                                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gold">
-                                    Imagem conceitual
-                                  </p>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setPerfumeForm((current) => ({
-                                        ...current,
-                                        conceptImageUrl: "",
-                                      }))
-                                    }
-                                    className="min-h-8 w-fit rounded-full border border-red-400/30 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-red-300 transition hover:bg-red-400/10"
-                                  >
-                                    Limpar imagem conceitual
-                                  </button>
-                                </div>
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={perfumeForm.conceptImageUrl}
-                                  alt="Imagem conceitual"
-                                  onError={(event) => {
-                                    event.currentTarget.style.display = "none";
-                                  }}
-                                  className="mt-3 h-32 w-full object-contain"
-                                />
-                              </div>
-                            ) : null}
-                          </div>
-
-                          {galleryPreviewUrls.length > 0 ? (
-                            <div>
-                              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gold">
-                                Galeria ({galleryPreviewUrls.length})
-                              </p>
-                              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                                {galleryPreviewUrls.map((imageUrl, index) => (
-                                  <div
-                                    key={`${imageUrl}-${index}`}
-                                    className="border border-white/10 bg-black/35 p-2"
-                                  >
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img
-                                      src={imageUrl}
-                                      alt={`Galeria ${index + 1}`}
-                                      onError={(event) => {
-                                        event.currentTarget.style.display = "none";
-                                      }}
-                                      className="h-24 w-full object-contain"
-                                    />
-                                    <div className="mt-2 grid gap-2">
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          useGalleryImageAs(imageUrl, "main")
-                                        }
-                                        className="min-h-8 rounded-full border border-gold/30 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-gold-light transition hover:border-gold"
-                                      >
-                                        Usar como principal
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          useGalleryImageAs(imageUrl, "concept")
-                                        }
-                                        className="min-h-8 rounded-full border border-gold/30 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-gold-light transition hover:border-gold"
-                                      >
-                                        Usar como conceitual
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => removeGalleryImage(index)}
-                                        className="min-h-8 rounded-full border border-red-400/30 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-red-300 transition hover:bg-red-400/10"
-                                      >
-                                        Remover
-                                      </button>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ) : null}
-                        </div>
-                      </section>
-
-                      <label>
-                        <span className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                          Descricao longa
-                        </span>
-                        <textarea
-                          rows={4}
-                          value={perfumeForm.longDescription}
-                          onChange={(event) =>
-                            setPerfumeForm((current) => ({
-                              ...current,
-                              longDescription: event.target.value,
-                            }))
-                          }
-                          className="mt-2 w-full resize-none border border-gold/25 bg-black/45 px-4 py-3 text-sm text-white outline-none transition focus:border-gold"
-                        />
-                      </label>
-
-                      <label className="flex items-center gap-3 text-sm text-stone-300">
-                        <input
-                          type="checkbox"
-                          checked={perfumeForm.isActive}
-                          onChange={(event) =>
-                            setPerfumeForm((current) => ({
-                              ...current,
-                              isActive: event.target.checked,
-                            }))
-                          }
-                        />
-                        Ativo no cadastro
-                      </label>
-
-                      {perfumeMessage ? (
-                        <p className="text-sm leading-6 text-gold-light">
-                          {perfumeMessage}
-                        </p>
-                      ) : null}
-
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="submit"
-                          disabled={isPerfumeLoading}
-                          className="min-h-10 rounded-full bg-gold px-5 text-xs font-semibold uppercase tracking-[0.16em] text-black transition hover:bg-gold-light disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {editingPerfumeId ? "Salvar edicao" : "Cadastrar perfume"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPerfumeForm(initialPerfumeForm);
-                            setEditingPerfumeId(null);
-                            setPerfumeMessage("");
-                            setMainImageFile(null);
-                            setConceptImageFile(null);
-                            setGalleryImageFiles([]);
-                            setImageUploadMessage("");
-                          }}
-                          className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold"
-                        >
-                          Limpar
-                        </button>
-                      </div>
-                    </div>
-                  </form>
-
-                  <div className="grid gap-3">
-                    <section className="border border-gold/25 bg-gold/10 p-5">
-                      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
-                            Alertas de reposicao
-                          </p>
-                          <h3 className="mt-3 text-xl font-semibold text-white">
-                            Itens que precisam de atencao
-                          </h3>
-                        </div>
-                        <p className="text-sm text-gold-light">
-                          {replenishmentRows.length} item
-                          {replenishmentRows.length === 1 ? "" : "s"}
-                        </p>
-                      </div>
-
-                      <div className="mt-5 grid gap-3">
-                        {replenishmentRows.length === 0 ? (
-                          <p className="border border-white/10 bg-black/25 p-4 text-sm text-stone-400">
-                            Nenhum alerta de reposicao no momento.
-                          </p>
-                        ) : (
-                          replenishmentRows.map((row) => {
-                            if ("perfume" in row && "price" in row) {
-                              return (
-                                <article
-                                  key={row.perfume.id}
-                                  className="border border-white/10 bg-black/25 p-4"
-                                >
-                                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-                                    <div>
-                                      <h4 className="text-lg font-semibold text-white">
-                                        {row.perfume.name}
-                                      </h4>
-                                      <p className="mt-2 text-sm text-stone-400">
-                                        {row.perfume.collection} &bull; Estoque atual:{" "}
-                                        {row.stockQuantity} &bull;{" "}
-                                        {formatCurrency(row.price)}
-                                      </p>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => editPerfume(row.perfume)}
-                                      className="min-h-10 w-fit rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold"
-                                    >
-                                      Editar perfume
-                                    </button>
-                                  </div>
-                                </article>
-                              );
-                            }
-
-                            return null;
-                          })
-                        )}
-                      </div>
-                    </section>
-
-                    {supabasePerfumes.length === 0 ? (
-                      <div className="border border-white/10 bg-black/25 p-6 text-center">
-                        <p className="text-sm text-stone-500">
-                          Nenhum perfume cadastrado ainda.
-                        </p>
-                      </div>
-                    ) : (
-                      onlinePerfumeRows.map((row) => {
-                        const perfume = row.perfume;
-                        const statusClass = stockStatusClass(row.status);
-                        const galleryCount =
-                          perfume.gallery_image_urls?.length ?? 0;
-
-                        return (
-                          <article
-                            key={perfume.id}
-                            className="border border-white/10 bg-black/25 p-5"
-                          >
-                            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
-                              <div className="flex min-w-0 flex-1 flex-col gap-4 sm:flex-row">
-                                {perfume.image_url ? (
-                                  <div className="h-24 w-24 shrink-0 overflow-hidden rounded border border-gold/20 bg-black/40">
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img
-                                      src={perfume.image_url}
-                                      alt={perfume.name}
-                                      onError={(event) => {
-                                        event.currentTarget.style.display = "none";
-                                      }}
-                                      className="h-full w-full object-contain p-2"
-                                    />
-                                  </div>
-                                ) : null}
-                                <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-center gap-3">
-                                  <p className="text-xs uppercase tracking-[0.22em] text-gold/80">
-                                    {perfume.collection}
-                                  </p>
-                                  <span
-                                    className={`border px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${statusClass}`}
-                                  >
-                                    {row.status}
-                                  </span>
-                                </div>
-                                <h3 className="mt-2 text-xl font-semibold text-white">
-                                  {perfume.name}
-                                </h3>
-                                <div className="mt-4 grid gap-2 text-sm text-stone-300 sm:grid-cols-2 xl:grid-cols-3">
-                                  <p>Tipo: {bottleTypeLabel(perfume.bottle_type)}</p>
-                                  <p>Preco: {formatCurrency(row.price)}</p>
-                                  <p>Custo: {formatCurrency(row.cost)}</p>
-                                  <p>
-                                    Lucro unitario:{" "}
-                                    {formatCurrency(row.unitProfit)}
-                                  </p>
-                                  <p>Margem: {formatPercent(row.margin)}</p>
-                                  <p>Estoque: {row.stockQuantity}</p>
-                                </div>
-                                <div className="mt-3 flex flex-wrap gap-2 text-xs text-stone-300">
-                                  <span className="border border-white/10 bg-white/[0.04] px-3 py-1">
-                                    {perfume.image_url
-                                      ? "Imagem principal"
-                                      : "Sem imagem"}
-                                  </span>
-                                  <span className="border border-white/10 bg-white/[0.04] px-3 py-1">
-                                    Galeria com {galleryCount} imagem
-                                    {galleryCount === 1 ? "" : "s"}
-                                  </span>
-                                </div>
-                                <p className="mt-3 text-sm text-stone-500">
-                                  {perfume.is_active ? "Ativo" : "Inativo"} no cadastro
-                                </p>
-                                </div>
-                              </div>
-                              <div className="flex flex-wrap gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => editPerfume(perfume)}
-                                  className="min-h-10 rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold"
-                                >
-                                  Editar
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => deletePerfume(perfume.id)}
-                                  className="min-h-10 rounded-full border border-red-400/30 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-red-300 transition hover:bg-red-400/10"
-                                >
-                                  Excluir
-                                </button>
-                              </div>
-                            </div>
-                          </article>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-              )}
-            </section>
-          ) : null}
-
-          {activeTab === "alerts" ? (
-            <section className="premium-surface p-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gold">
-                Alertas
-              </p>
-              <h2 className="mt-3 text-2xl font-semibold text-white">
-                Fiados e vendas pendentes
-              </h2>
-              <div className="mt-6 grid gap-6">
-                {[
-                  ["Vencidas", alertGroups.overdue],
-                  ["Vencem hoje", alertGroups.today],
-                  ["Proximos 7 dias", alertGroups.nextSevenDays],
-                  ["Sem vencimento", alertGroups.noDueDate],
-                ].map(([title, group]) => (
-                  <div key={title as string}>
-                    <h3 className="text-lg font-semibold text-gold-light">
-                      {title as string}
-                    </h3>
-                    <div className="mt-3 grid gap-3">
-                      {(group as Sale[]).length === 0 ? (
-                        <div className="border border-white/10 bg-black/25 p-5 text-sm text-stone-500">
-                          Nenhuma pendencia nesta categoria.
-                        </div>
-                      ) : (
-                        (group as Sale[]).map((sale) => {
-                          const total = saleProfit(sale).revenue;
-                          const message = sale.customerPhone
-                            ? `Ola, tudo bem? Passando para lembrar sobre o perfume ${sale.perfumeName} da Amaro dos Reis Parfum, no valor de ${formatCurrency(total)}, com vencimento em ${formatDateOnly(sale.dueDate)}.`
-                            : `Lembrete: cliente ${sale.customerName} tem pagamento pendente do perfume ${sale.perfumeName}, valor ${formatCurrency(total)}, vencimento ${formatDateOnly(sale.dueDate)}.`;
-                          const href = sale.customerPhone
-                            ? createCustomerWhatsAppLink(sale.customerPhone, message)
-                            : createWhatsAppLink(message);
-
-                          return (
-                            <article
-                              key={sale.id}
-                              className="border border-white/10 bg-black/25 p-5"
-                            >
-                              <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
-                                <div>
-                                  <h4 className="text-xl font-semibold text-white">
-                                    {sale.customerName}
-                                  </h4>
-                                  <p className="mt-2 text-sm text-stone-300">
-                                    {sale.perfumeName} &bull; {formatCurrency(total)}
-                                  </p>
-                                  <p className="mt-2 text-sm text-stone-500">
-                                    {sale.customerPhone || "Sem telefone"} &bull; {formatDateOnly(sale.dueDate)} &bull; {describeDueDate(sale.dueDate)}
-                                  </p>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => markAsPaid(sale.id)}
-                                    className="min-h-10 rounded-full border border-emerald-400/30 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-300 transition hover:bg-emerald-400/10"
-                                  >
-                                    Marcar como pago
-                                  </button>
-                                  <a
-                                    href={href}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="flex min-h-10 items-center rounded-full border border-gold/35 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-gold-light transition hover:border-gold"
-                                  >
-                                    Abrir WhatsApp
-                                  </a>
-                                </div>
-                              </div>
-                            </article>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
+                    {option.label}
+                  </button>
                 ))}
               </div>
-            </section>
-          ) : null}
+            </div>
 
-          <div className="mt-8 premium-surface p-6">
-            <p className="text-sm leading-7 text-stone-400">
-              Este painel e uma versao inicial para controle pessoal. Nao use
-              como sistema fiscal. Faca backup das informacoes exportando CSV
-              regularmente.
-            </p>
-          </div>
+            <div className="mt-6 overflow-x-auto">
+              <table className="min-w-[1180px] w-full border-collapse text-left text-sm">
+                <thead>
+                  <tr className="border-b border-gold/20 text-xs uppercase tracking-[0.16em] text-stone-500">
+                    <th className="py-3 pr-4 font-semibold">Cliente</th>
+                    <th className="py-3 pr-4 font-semibold">Perfume</th>
+                    <th className="py-3 pr-4 font-semibold">Linha</th>
+                    <th className="py-3 pr-4 font-semibold">Qtd.</th>
+                    <th className="py-3 pr-4 font-semibold">Valor total</th>
+                    <th className="py-3 pr-4 font-semibold">Custo</th>
+                    <th className="py-3 pr-4 font-semibold">Lucro</th>
+                    <th className="py-3 pr-4 font-semibold">Pagamento</th>
+                    <th className="py-3 pr-4 font-semibold">Status</th>
+                    <th className="py-3 pr-4 font-semibold">Data</th>
+                    <th className="py-3 pr-4 font-semibold">Observação</th>
+                    <th className="py-3 pr-4 font-semibold">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredSales.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={12}
+                        className="py-10 text-center text-sm text-stone-500"
+                      >
+                        Nenhuma venda encontrada.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredSales.map((sale) => {
+                      const total = sale.unitPrice * sale.quantity;
+                      const saleCost = getSaleUnitCost(sale) * sale.quantity;
+                      const profit = getSaleEstimatedProfit(sale);
+
+                      return (
+                        <tr
+                          key={sale.id}
+                          className="border-b border-white/10 align-top text-stone-300 last:border-0"
+                        >
+                          <td className="max-w-[150px] py-4 pr-4 font-medium text-white">
+                            {sale.customerName}
+                          </td>
+                          <td className="max-w-[160px] py-4 pr-4">
+                            {sale.perfumeName}
+                          </td>
+                          <td className="py-4 pr-4">
+                            {lineLabel(sale.lineType)}
+                          </td>
+                          <td className="py-4 pr-4">{sale.quantity}</td>
+                          <td className="py-4 pr-4 font-semibold text-gold-light">
+                            {formatCurrency(total)}
+                          </td>
+                          <td className="py-4 pr-4 text-stone-400">
+                            {formatCurrency(saleCost)}
+                          </td>
+                          <td className="py-4 pr-4 text-emerald-300">
+                            {formatCurrency(profit)}
+                          </td>
+                          <td className="py-4 pr-4">
+                            {paymentOptions.find(
+                              (option) => option.value === sale.paymentMethod
+                            )?.label ?? sale.paymentMethod}
+                          </td>
+                          <td className="py-4 pr-4">
+                            <span
+                              className={`inline-flex rounded-md border px-2 py-1 text-xs font-semibold uppercase tracking-[0.12em] ${
+                                sale.status === "pago"
+                                  ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
+                                  : "border-gold/35 bg-gold/10 text-gold-light"
+                              }`}
+                            >
+                              {sale.status === "pago" ? "Pago" : "Pendente"}
+                            </span>
+                          </td>
+                          <td className="py-4 pr-4 text-stone-400">
+                            {formatDate(sale.createdAt)}
+                          </td>
+                          <td className="max-w-[220px] py-4 pr-4 text-stone-400">
+                            {sale.notes || "-"}
+                          </td>
+                          <td className="py-4 pr-4">
+                            <div className="flex flex-col gap-2">
+                              <button
+                                type="button"
+                                onClick={() => markAsPaid(sale.id)}
+                                disabled={sale.status === "pago"}
+                                className="min-h-9 rounded-md border border-emerald-400/30 px-3 text-xs font-semibold uppercase tracking-[0.12em] text-emerald-300 transition hover:bg-emerald-400/10 disabled:cursor-not-allowed disabled:opacity-45"
+                              >
+                                Marcar como pago
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteSale(sale.id)}
+                                className="min-h-9 rounded-md border border-red-400/30 px-3 text-xs font-semibold uppercase tracking-[0.12em] text-red-200 transition hover:bg-red-400/10"
+                              >
+                                Excluir
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section
+          id="estoque-e-custos"
+          className="grid scroll-mt-28 gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)]"
+        >
+          <form
+            onSubmit={saveInventory}
+            className="rounded-lg border border-gold/20 bg-white/[0.045] p-5 sm:p-6"
+          >
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
+                Estoque e custos
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold text-white">
+                Salvar estoque
+              </h2>
+            </div>
+
+            <div className="mt-6 grid gap-4">
+              <label>
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                  Perfume
+                </span>
+                <select
+                  value={inventoryForm.perfumeSlug}
+                  onChange={(event) =>
+                    handleInventoryPerfumeChange(event.target.value)
+                  }
+                  className="mt-2 w-full rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-white outline-none transition focus:border-gold"
+                >
+                  {perfumeCommerce.map((perfume) => (
+                    <option key={perfumeSlug(perfume)} value={perfumeSlug(perfume)}>
+                      {perfume.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                  Linha
+                </span>
+                <select
+                  value={inventoryForm.lineType}
+                  onChange={(event) =>
+                    handleInventoryLineChange(event.target.value as LineType)
+                  }
+                  className="mt-2 w-full rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-white outline-none transition focus:border-gold"
+                >
+                  {lineOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label>
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                    Quantidade em estoque
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={inventoryForm.stockQuantity}
+                    onChange={(event) =>
+                      setInventoryForm((current) => ({
+                        ...current,
+                        stockQuantity: Math.max(
+                          0,
+                          Math.floor(Number(event.target.value) || 0)
+                        ),
+                      }))
+                    }
+                    className="mt-2 w-full rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-white outline-none transition focus:border-gold"
+                  />
+                </label>
+
+                <label>
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                    Estoque mínimo
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={inventoryForm.minimumStock}
+                    onChange={(event) =>
+                      setInventoryForm((current) => ({
+                        ...current,
+                        minimumStock: Math.max(
+                          0,
+                          Math.floor(Number(event.target.value) || 0)
+                        ),
+                      }))
+                    }
+                    className="mt-2 w-full rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-white outline-none transition focus:border-gold"
+                  />
+                </label>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label>
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                    Custo unitário
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={inventoryForm.unitCost}
+                    onChange={(event) =>
+                      setInventoryForm((current) => ({
+                        ...current,
+                        unitCost: clampNumber(event.target.value, 0),
+                      }))
+                    }
+                    className="mt-2 w-full rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-white outline-none transition focus:border-gold"
+                  />
+                </label>
+
+                <label>
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                    Preço de venda
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={inventoryForm.salePrice}
+                    onChange={(event) =>
+                      setInventoryForm((current) => ({
+                        ...current,
+                        salePrice: clampNumber(event.target.value, 0),
+                      }))
+                    }
+                    className="mt-2 w-full rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-white outline-none transition focus:border-gold"
+                  />
+                </label>
+              </div>
+
+              <div className="grid gap-4 rounded-lg border border-white/10 bg-black/35 p-4 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                    Lucro por unidade
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-emerald-300">
+                    {formatCurrency(inventoryUnitProfit)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                    Margem aproximada
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-gold-light">
+                    {formatPercent(inventoryMargin)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <button
+                  type="submit"
+                  className="min-h-11 rounded-md bg-gold px-5 text-xs font-semibold uppercase tracking-[0.16em] text-black transition hover:bg-gold-light"
+                >
+                  Salvar estoque
+                </button>
+                <button
+                  type="button"
+                  onClick={resetInventoryForm}
+                  className="min-h-11 rounded-md border border-gold/35 px-5 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light transition hover:border-gold"
+                >
+                  Limpar formulário
+                </button>
+              </div>
+            </div>
+          </form>
+
+          <section className="rounded-lg border border-gold/20 bg-white/[0.045] p-5 sm:p-6">
+            <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">
+                  Controle de estoque e custos
+                </p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">
+                  Lista de estoque
+                </h2>
+              </div>
+            </div>
+
+            <div className="mt-6 overflow-x-auto">
+              <table className="min-w-[1100px] w-full border-collapse text-left text-sm">
+                <thead>
+                  <tr className="border-b border-gold/20 text-xs uppercase tracking-[0.16em] text-stone-500">
+                    <th className="py-3 pr-4 font-semibold">Perfume</th>
+                    <th className="py-3 pr-4 font-semibold">Linha</th>
+                    <th className="py-3 pr-4 font-semibold">Estoque atual</th>
+                    <th className="py-3 pr-4 font-semibold">Custo unitário</th>
+                    <th className="py-3 pr-4 font-semibold">Preço de venda</th>
+                    <th className="py-3 pr-4 font-semibold">Lucro unidade</th>
+                    <th className="py-3 pr-4 font-semibold">Margem</th>
+                    <th className="py-3 pr-4 font-semibold">Estoque mínimo</th>
+                    <th className="py-3 pr-4 font-semibold">Status</th>
+                    <th className="py-3 pr-4 font-semibold">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedInventory.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={10}
+                        className="py-10 text-center text-sm text-stone-500"
+                      >
+                        Nenhum estoque cadastrado ainda.
+                      </td>
+                    </tr>
+                  ) : (
+                    sortedInventory.map((item) => {
+                      const status = getInventoryStatus(item);
+                      const unitProfit = item.salePrice - item.unitCost;
+
+                      return (
+                        <tr
+                          key={item.perfumeSlug}
+                          className="border-b border-white/10 align-top text-stone-300 last:border-0"
+                        >
+                          <td className="max-w-[180px] py-4 pr-4 font-medium text-white">
+                            {item.perfumeName}
+                          </td>
+                          <td className="py-4 pr-4">{lineLabel(item.lineType)}</td>
+                          <td className="py-4 pr-4">{item.stockQuantity}</td>
+                          <td className="py-4 pr-4">
+                            {formatCurrency(item.unitCost)}
+                          </td>
+                          <td className="py-4 pr-4 font-semibold text-gold-light">
+                            {formatCurrency(item.salePrice)}
+                          </td>
+                          <td className="py-4 pr-4 text-emerald-300">
+                            {formatCurrency(unitProfit)}
+                          </td>
+                          <td className="py-4 pr-4">
+                            {formatPercent(getItemMargin(item))}
+                          </td>
+                          <td className="py-4 pr-4">{item.minimumStock}</td>
+                          <td className="py-4 pr-4">
+                            <span
+                              className={`inline-flex rounded-md border px-2 py-1 text-xs font-semibold uppercase tracking-[0.12em] ${inventoryStatusClass(
+                                status
+                              )}`}
+                            >
+                              {status}
+                            </span>
+                          </td>
+                          <td className="py-4 pr-4">
+                            <div className="flex flex-col gap-2">
+                              <button
+                                type="button"
+                                onClick={() => editInventoryItem(item)}
+                                className="min-h-9 rounded-md border border-gold/35 px-3 text-xs font-semibold uppercase tracking-[0.12em] text-gold-light transition hover:border-gold"
+                              >
+                                Editar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteInventoryItem(item.perfumeSlug)}
+                                className="min-h-9 rounded-md border border-red-400/30 px-3 text-xs font-semibold uppercase tracking-[0.12em] text-red-200 transition hover:bg-red-400/10"
+                              >
+                                Excluir
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <div className="rounded-lg border border-white/10 bg-white/[0.035] p-4 text-sm leading-6 text-stone-400">
+          Este painel é uma versão inicial para controle pessoal. Não use como
+          sistema fiscal. Faça backup das informações exportando CSV
+          regularmente.
         </div>
       </section>
     </main>

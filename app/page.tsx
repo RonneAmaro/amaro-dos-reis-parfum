@@ -28,6 +28,8 @@ const collections = [
   },
 ];
 
+// O catalogo principal ja usa Supabase com fallback local via getPublicPerfumes().
+// A Home mantem estes destaques fixos ate a proxima etapa de curadoria dinamica.
 const perfumes = [
   {
     name: "DOMINARE",

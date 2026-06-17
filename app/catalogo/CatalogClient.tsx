@@ -1,12 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   availabilityLabels,
   lineLabels,
 } from "@/lib/perfumes";
-import { type PublicPerfume } from "@/lib/public-perfumes";
+import {
+  getPublicPerfumes,
+  type PublicPerfume,
+  type PublicPerfumeSource,
+} from "@/lib/supabase/perfumes";
 import {
   createArabPremiumMessage,
   createGiftRecommendationMessage,
@@ -121,7 +125,10 @@ function PerfumePlaceholder({ className = "aspect-[4/3]" }: { className?: string
   );
 }
 
-export function CatalogClient({ perfumes }: { perfumes: PublicPerfume[] }) {
+export function CatalogClient() {
+  const [perfumes, setPerfumes] = useState<PublicPerfume[]>([]);
+  const [source, setSource] = useState<PublicPerfumeSource | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState("Todas");
   const recommendationHref = createWhatsAppLink(
@@ -129,6 +136,30 @@ export function CatalogClient({ perfumes }: { perfumes: PublicPerfume[] }) {
   );
   const giftHref = createWhatsAppLink(createGiftRecommendationMessage());
   const arabPremiumHref = createWhatsAppLink(createArabPremiumMessage());
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadPerfumes() {
+      setIsLoading(true);
+
+      const result = await getPublicPerfumes();
+
+      if (!isMounted) {
+        return;
+      }
+
+      setPerfumes(result.data);
+      setSource(result.source);
+      setIsLoading(false);
+    }
+
+    loadPerfumes();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const filteredPerfumes = useMemo(() => {
     const normalizedQuery = normalize(query.trim());
@@ -153,6 +184,27 @@ export function CatalogClient({ perfumes }: { perfumes: PublicPerfume[] }) {
     });
   }, [activeFilter, perfumes, query]);
 
+  if (isLoading) {
+    return (
+      <main className="min-h-screen bg-[#050505] text-stone-100">
+        <section className="premium-bg flex min-h-[65vh] items-center justify-center px-6 py-16 text-center sm:px-10 lg:px-12">
+          <div className="premium-surface max-w-xl p-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.32em] text-gold">
+              Catalogo
+            </p>
+            <h1 className="mt-4 text-3xl font-semibold text-white">
+              Carregando catálogo...
+            </h1>
+            <p className="mt-4 text-sm leading-7 text-stone-400">
+              Conferindo a base sincronizada e mantendo fallback local para o
+              site continuar funcionando.
+            </p>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-[#050505] text-stone-100">
       <section className="premium-bg relative overflow-hidden border-b border-gold/15 px-6 py-16 sm:px-10 lg:px-12">
@@ -176,11 +228,20 @@ export function CatalogClient({ perfumes }: { perfumes: PublicPerfume[] }) {
       <section className="px-6 py-14 sm:px-10 lg:px-12">
         <div className="mx-auto max-w-7xl">
           <div className="mb-8 premium-surface grid gap-5 px-5 py-4 text-sm leading-7 text-stone-300 lg:grid-cols-[1fr_auto] lg:items-center">
-            <p>
-              Catalogo atualizado conforme disponibilidade e producao em
-              pequenos lotes. Consulte antes de finalizar o pedido para escolher
-              com mais seguranca.
-            </p>
+            <div>
+              {source ? (
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-gold-light">
+                  {source === "supabase"
+                    ? "Catálogo sincronizado com Supabase."
+                    : "Catálogo exibido a partir da base local."}
+                </p>
+              ) : null}
+              <p>
+                Catalogo atualizado conforme disponibilidade e producao em
+                pequenos lotes. Consulte antes de finalizar o pedido para escolher
+                com mais seguranca.
+              </p>
+            </div>
             <div className="flex flex-col gap-3 sm:flex-row">
               <a
                 href={recommendationHref}

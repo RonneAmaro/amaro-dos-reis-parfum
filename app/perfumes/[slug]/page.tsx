@@ -4,9 +4,9 @@ import {
   lineLabels,
 } from "@/lib/perfumes";
 import {
-  getPublicPerfumeBySlug,
+  getPublicPerfumes,
   type PublicPerfume,
-} from "@/lib/public-perfumes";
+} from "@/lib/supabase/perfumes";
 import {
   createDeliveryQuestionMessage,
   createPerfumeAvailabilityMessage,
@@ -141,7 +141,8 @@ export default async function PerfumePage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const perfume = await getPublicPerfumeBySlug(slug);
+  const publicPerfumes = await getPublicPerfumes();
+  const perfume = publicPerfumes.data.find((item) => item.slug === slug);
 
   if (!perfume) {
     return <NotFoundPerfume />;
@@ -164,6 +165,11 @@ export default async function PerfumePage({
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.34em] text-gold">
               {perfume.collection}
+            </p>
+            <p className="mt-3 w-fit border border-gold/25 bg-black/35 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-gold-light">
+              {publicPerfumes.source === "supabase"
+                ? "Dados sincronizados"
+                : "Base local"}
             </p>
             <h1 className="mt-5 text-5xl font-semibold uppercase leading-none text-white sm:text-7xl">
               {perfume.name}

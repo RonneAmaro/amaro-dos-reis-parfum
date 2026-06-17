@@ -30,11 +30,76 @@ NEXT_PUBLIC_WHATSAPP_NUMBER=5599999999999
 Nao commitar `.env.local`. Esse arquivo pode conter configuracoes locais e deve
 ficar fora do repositorio.
 
-## Supabase
+## Supabase futuro
 
-O painel interno pode usar Supabase para autenticar o acesso e salvar vendas,
-clientes e estoque por usuario. A configuracao completa esta em
-[`docs/supabase-setup.md`](docs/supabase-setup.md).
+O painel atual em `/admin` usa `localStorage` para vendas, estoque, custos,
+lucro e backups. A pasta [`docs/supabase`](docs/supabase) contem o schema
+inicial e o plano de migracao para uma futura sincronizacao com Supabase.
+
+Antes de migrar, exporte um backup completo pelo painel. Esse arquivo JSON sera
+usado para conferir vendas e estoque antes de qualquer importacao.
+
+Futuramente sera necessario configurar estas variaveis fora do GitHub:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+```
+
+## Preparacao do banco
+
+A preparacao do banco para a futura fase Supabase esta documentada em:
+
+- [`docs/supabase/schema.sql`](docs/supabase/schema.sql): cria as tabelas iniciais.
+- [`docs/supabase/seed-perfumes.sql`](docs/supabase/seed-perfumes.sql): carrega os perfumes oficiais.
+- [`docs/supabase/setup-checklist.md`](docs/supabase/setup-checklist.md): orienta a criacao do projeto Supabase e variaveis.
+
+## Cliente Supabase
+
+A dependencia oficial `@supabase/supabase-js` foi adicionada ao projeto. O
+cliente so e criado se as variaveis publicas estiverem configuradas:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+```
+
+Sem essas variaveis, o site continua funcionando normalmente com o painel local
+em `localStorage`. A sincronizacao real de vendas e estoque sera feita em um
+pacote futuro.
+
+## Sincronizacao segura de vendas e estoque
+
+O painel local continua usando `localStorage`, mas agora possui rotas manuais
+para enviar e buscar vendas/estoque no Supabase quando o ambiente estiver
+preparado. A sincronizacao nao e automatica e nao apaga dados locais sem
+confirmacao.
+
+A `SUPABASE_SERVICE_ROLE_KEY` deve ser usada somente em rotas server-side. Ela
+nao pode ser exposta no navegador, no GitHub ou em Client Components. O painel
+envia apenas um token temporario no header `x-amaro-admin-token`, configurado
+por `AMARO_ADMIN_SYNC_TOKEN`.
+
+Variaveis necessarias para testar a sincronizacao privada:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+AMARO_ADMIN_SYNC_TOKEN=
+```
+
+Antes de sincronizar, exporte um backup completo pelo painel `/admin`. Esta
+etapa ainda nao substitui um login final; futuramente a protecao sera evoluida
+com Supabase Auth, RLS e regras administrativas definitivas.
+
+## Catalogo com fallback
+
+O catalogo publico tenta ler os perfumes do Supabase. Se as variaveis nao
+estiverem configuradas, se a consulta falhar ou se o Supabase retornar vazio, o
+site usa `lib/perfumes.ts` como fallback local.
+
+Esse comportamento evita que o site quebre quando o Supabase estiver
+indisponivel ou ainda nao estiver configurado no ambiente.
 
 ## Catálogo público via Supabase
 

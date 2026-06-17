@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { CatalogClient } from "@/app/catalogo/CatalogClient";
-import { getPublicPerfumes } from "@/lib/public-perfumes";
 
 export const metadata: Metadata = {
   title: "Catálogo | AMAROdosREIS Parfum",
@@ -8,8 +7,6 @@ export const metadata: Metadata = {
     "Conheça fragrâncias autorais inspiradas em grandes referências internacionais e orientais.",
 };
 
-export default async function CatalogoPage() {
-  const perfumes = await getPublicPerfumes();
-
-  return <CatalogClient perfumes={perfumes} />;
+export default function CatalogoPage() {
+  return <CatalogClient />;
 }
