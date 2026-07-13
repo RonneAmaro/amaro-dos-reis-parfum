@@ -159,6 +159,58 @@ docs/supabase/flexible-sales-migration.sql
 Essa migration adiciona `items` em JSONB e os totais opcionais. Ela nao e
 executada automaticamente; exporte um backup antes de aplica-la.
 
+## Google Agenda com OAuth
+
+O painel pode criar e atualizar eventos reais de cobranca no Google Agenda. Os
+tokens OAuth ficam criptografados no Supabase e sao acessados somente pelas
+rotas server-side protegidas pela sessao administrativa. Nenhum token e salvo
+no `localStorage` ou enviado ao navegador.
+
+Para OAuth do Google Agenda funcionar, o cookie admin usa `SameSite=Lax` para
+permitir o retorno seguro do Google em navegacao top-level. O cookie permanece
+assinado, `httpOnly` e `secure` em producao.
+
+No Google Cloud Console:
+
+1. Crie ou selecione um projeto.
+2. Ative a `Google Calendar API`.
+3. Configure a tela de consentimento OAuth e inclua a conta do administrador
+   como usuario de teste enquanto o aplicativo estiver em modo de teste.
+4. Crie uma credencial `OAuth client ID` do tipo `Web application`.
+5. Cadastre os redirect URIs autorizados:
+   - Local: `http://localhost:3001/api/admin/google-calendar/callback`
+   - Producao: `https://amarodosreisparfum.vercel.app/api/admin/google-calendar/callback`
+
+Configure no ambiente local e na Vercel:
+
+```bash
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=http://localhost:3001/api/admin/google-calendar/callback
+GOOGLE_TOKEN_ENCRYPTION_KEY=
+GOOGLE_CALENDAR_ID=primary
+NEXT_PUBLIC_BUSINESS_TIME_ZONE=America/Porto_Velho
+```
+
+Para gerar uma chave de criptografia aleatoria no PowerShell:
+
+```powershell
+$bytes = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes); [Convert]::ToBase64String($bytes)
+```
+
+Nunca reutilize o client secret como chave de criptografia e nunca commite
+esses valores. Aplique manualmente a migration:
+
+```text
+docs/supabase/google-calendar-migration.sql
+```
+
+Para testar: inicie o site na porta 3001, entre em `/admin`, conecte a conta na
+secao `Google Agenda`, crie uma venda pendente com data prevista no dia 15 e
+clique em `Criar lembrete no Google Agenda`. Abra o evento pelo link exibido.
+Ao marcar a venda como recebida, confirme a remocao do lembrete e confira o
+resultado no Google Agenda.
+
 ## Catalogo com fallback
 
 O catalogo publico tenta ler os perfumes do Supabase. Se as variaveis nao

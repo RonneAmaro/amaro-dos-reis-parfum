@@ -79,4 +79,5 @@ export async function isValidAdminSession(
 export const adminSessionCookie = {
   name: ADMIN_COOKIE_NAME,
   maxAge: SESSION_DURATION_SECONDS,
+  sameSite: "lax" as const,
 };

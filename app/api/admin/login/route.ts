@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     value: await createAdminSessionToken(sessionSecret),
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
+    sameSite: adminSessionCookie.sameSite,
     path: "/",
     maxAge: adminSessionCookie.maxAge,
   });

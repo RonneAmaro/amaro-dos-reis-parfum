@@ -11,7 +11,6 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { SALES_STORAGE_KEY } from "@/lib/storage-keys";
 import {
   createCollectionMessage,
-  createGoogleCalendarUrl,
   createWhatsAppCollectionUrl,
   expectedPaymentMethodLabel,
   formatReceivableDate,
@@ -67,6 +66,10 @@ type Sale = {
   totalAmount?: number;
   amountPaid?: number;
   remainingAmount?: number;
+  googleCalendarEventId?: string;
+  googleCalendarEventLink?: string;
+  googleCalendarSyncedAt?: string;
+  googleCalendarStatus?: string;
 };
 
 type SaleForm = {
@@ -126,6 +129,7 @@ type PulledSyncData = {
 };
 
 type SyncAction = "" | "status" | "push" | "pull" | "restore";
+type GoogleCalendarStatus = { connected: boolean; connectedEmail?: string; calendarId?: string; lastSync?: string };
 
 const lineOptions: { value: LineType; label: string; price: number }[] = [
   { value: "tradicional", label: "Tradicional", price: 80 },
@@ -408,6 +412,10 @@ function normalizeSale(value: unknown): Sale | null {
     totalAmount: typeof value.totalAmount === "number" ? value.totalAmount : undefined,
     amountPaid: typeof value.amountPaid === "number" ? value.amountPaid : undefined,
     remainingAmount: typeof value.remainingAmount === "number" ? value.remainingAmount : undefined,
+    googleCalendarEventId: typeof value.googleCalendarEventId === "string" ? value.googleCalendarEventId : undefined,
+    googleCalendarEventLink: typeof value.googleCalendarEventLink === "string" ? value.googleCalendarEventLink : undefined,
+    googleCalendarSyncedAt: typeof value.googleCalendarSyncedAt === "string" ? value.googleCalendarSyncedAt : undefined,
+    googleCalendarStatus: typeof value.googleCalendarStatus === "string" ? value.googleCalendarStatus : undefined,
   };
 }
 
@@ -584,6 +592,9 @@ export default function AdminPage() {
   const [assistantText, setAssistantText] = useState("");
   const [assistantMessage, setAssistantMessage] = useState("");
   const [isListening, setIsListening] = useState(false);
+  const [googleStatus, setGoogleStatus] = useState<GoogleCalendarStatus>({ connected: false });
+  const [googleMessage, setGoogleMessage] = useState("");
+  const [googleBusy, setGoogleBusy] = useState(false);
   const [inventoryForm, setInventoryForm] =
     useState<InventoryForm>(initialInventoryForm);
   const [filter, setFilter] = useState<SaleFilter>("todos");
@@ -746,6 +757,16 @@ export default function AdminPage() {
   useEffect(() => {
     setSales(readSalesFromStorage());
     setIsSalesLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/admin/google-calendar/status", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data: GoogleCalendarStatus & { message?: string }) => {
+        setGoogleStatus({ connected: Boolean(data.connected), connectedEmail: data.connectedEmail, calendarId: data.calendarId, lastSync: data.lastSync });
+        if (data.message && !data.connected) setGoogleMessage(data.message);
+      })
+      .catch(() => setGoogleMessage("Não foi possível consultar o Google Agenda."));
   }, []);
 
   useEffect(() => {
@@ -1031,8 +1052,48 @@ export default function AdminPage() {
     );
   }
 
-  function markAsPaid(saleId: string) {
+  async function syncSaleWithGoogle(sale: Sale) {
+    setGoogleBusy(true); setGoogleMessage("");
+    try {
+      const response = await fetch("/api/admin/google-calendar/sync-sale", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sale }) });
+      const data = await response.json() as { ok?: boolean; message?: string; eventId?: string; eventLink?: string; syncedAt?: string; status?: string };
+      if (!response.ok || !data.ok) throw new Error(data.message || "Não foi possível criar o lembrete.");
+      setSales((current) => current.map((item) => item.id === sale.id ? { ...item,
+        googleCalendarEventId: data.eventId, googleCalendarEventLink: data.eventLink,
+        googleCalendarSyncedAt: data.syncedAt, googleCalendarStatus: data.status } : item));
+      setGoogleMessage("Lembrete sincronizado com o Google Agenda.");
+    } catch (error) { setGoogleMessage(error instanceof Error ? error.message : "Falha ao sincronizar lembrete."); }
+    finally { setGoogleBusy(false); }
+  }
+
+  async function syncPendingWithGoogle() {
+    setGoogleBusy(true); setGoogleMessage("");
+    try {
+      const response = await fetch("/api/admin/google-calendar/sync-pending", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sales }) });
+      const data = await response.json() as { ok?: boolean; message?: string; results?: Array<{ saleId: string; eventId?: string; eventLink?: string; syncedAt?: string; status?: string; error?: string }> };
+      if (!response.ok || !data.ok) throw new Error(data.message || "Não foi possível sincronizar cobranças.");
+      const byId = new Map((data.results ?? []).filter((item) => !item.error).map((item) => [item.saleId, item]));
+      setSales((current) => current.map((sale) => { const result = byId.get(sale.id); return result ? { ...sale,
+        googleCalendarEventId: result.eventId, googleCalendarEventLink: result.eventLink,
+        googleCalendarSyncedAt: result.syncedAt, googleCalendarStatus: result.status } : sale; }));
+      const failures = (data.results ?? []).filter((item) => item.error).length;
+      setGoogleMessage(`${byId.size} lembrete(s) sincronizado(s)${failures ? `; ${failures} falharam` : ""}.`);
+    } catch (error) { setGoogleMessage(error instanceof Error ? error.message : "Falha ao sincronizar cobranças."); }
+    finally { setGoogleBusy(false); }
+  }
+
+  async function disconnectGoogle() {
+    if (!window.confirm("Desconectar a conta Google Agenda?")) return;
+    setGoogleBusy(true);
+    try { const response = await fetch("/api/admin/google-calendar/disconnect", { method: "POST" }); if (!response.ok) throw new Error();
+      setGoogleStatus({ connected: false }); setGoogleMessage("Google Agenda desconectado."); }
+    catch { setGoogleMessage("Não foi possível desconectar o Google Agenda."); }
+    finally { setGoogleBusy(false); }
+  }
+
+  async function markAsPaid(saleId: string) {
     const now = new Date().toISOString();
+    const selected = sales.find((sale) => sale.id === saleId);
 
     setSales((currentSales) =>
       currentSales.map((sale) =>
@@ -1047,6 +1108,12 @@ export default function AdminPage() {
           : sale
       )
     );
+    if (selected?.googleCalendarEventId && window.confirm("Remover também o lembrete do Google Agenda?")) {
+      try { const response = await fetch("/api/admin/google-calendar/remove-event", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ eventId: selected.googleCalendarEventId }) });
+        if (!response.ok) throw new Error("Falha ao remover evento");
+        setSales((current) => current.map((sale) => sale.id === saleId ? { ...sale, googleCalendarStatus: "removed", googleCalendarEventId: undefined, googleCalendarEventLink: undefined } : sale));
+      } catch { setGoogleMessage("Venda recebida, mas o lembrete não pôde ser removido."); }
+    }
   }
 
   function editExpectedPaymentDate(sale: Sale) {
@@ -1071,15 +1138,6 @@ export default function AdminPage() {
     }
     await copyTextToClipboard(createCollectionMessage(sale));
     window.alert("Mensagem copiada. Cadastre um telefone para abrir o WhatsApp diretamente.");
-  }
-
-  function openGoogleCalendar(sale: Sale) {
-    const url = createGoogleCalendarUrl(sale);
-    if (!url) {
-      window.alert("Defina uma data prevista antes de adicionar ao Google Agenda.");
-      return;
-    }
-    window.open(url, "_blank", "noopener,noreferrer");
   }
 
   function deleteSale(saleId: string) {
@@ -1640,6 +1698,30 @@ export default function AdminPage() {
           ))}
         </nav>
 
+        <section className="rounded-xl border border-blue-400/20 bg-gradient-to-br from-blue-500/10 to-black/50 p-5 sm:p-7">
+          <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-blue-300">Lembretes no celular</p>
+              <h2 className="mt-2 text-2xl font-semibold text-white">Google Agenda</h2>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-400">
+                {googleStatus.connected ? `Conectado${googleStatus.connectedEmail ? ` como ${googleStatus.connectedEmail}` : ""}.` : "Nenhuma conta Google conectada."}
+                {" "}As notificações aparecerão no celular quando estiverem ativadas no aplicativo Google Agenda.
+              </p>
+            </div>
+            <div className="grid gap-2 sm:flex sm:flex-wrap">
+              {!googleStatus.connected ? (
+                <a href="/api/admin/google-calendar/connect" className="inline-flex min-h-12 items-center justify-center rounded-md bg-blue-400 px-5 text-xs font-bold uppercase tracking-[0.14em] text-black">Conectar Google Agenda</a>
+              ) : (
+                <>
+                  <button type="button" onClick={() => void syncPendingWithGoogle()} disabled={googleBusy} className="min-h-12 rounded-md bg-blue-400 px-5 text-xs font-bold uppercase tracking-[0.14em] text-black disabled:opacity-50">Sincronizar cobranças pendentes</button>
+                  <button type="button" onClick={() => void disconnectGoogle()} disabled={googleBusy} className="min-h-12 rounded-md border border-red-400/30 px-5 text-xs font-bold uppercase tracking-[0.14em] text-red-200 disabled:opacity-50">Desconectar</button>
+                </>
+              )}
+            </div>
+          </div>
+          {googleMessage ? <p className="mt-4 rounded-md border border-white/10 bg-black/40 p-3 text-sm text-stone-300">{googleMessage}</p> : null}
+        </section>
+
         <section id="agenda-recebimentos" className="scroll-mt-28 rounded-xl border border-gold/25 bg-white/[0.04] p-5 sm:p-7">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.26em] text-gold">Controle de cobranças</p>
@@ -1703,8 +1785,9 @@ export default function AdminPage() {
                           <button type="button" disabled={sale.status === "pago"} onClick={() => markAsPaid(sale.id)} className="min-h-11 rounded-md border border-emerald-400/30 px-3 text-xs font-semibold text-emerald-300 disabled:opacity-40">Marcar como recebido</button>
                           <button type="button" onClick={() => editExpectedPaymentDate(sale)} className="min-h-11 rounded-md border border-gold/30 px-3 text-xs font-semibold text-gold-light">Editar data</button>
                           <button type="button" onClick={() => void openCollectionMessage(sale)} className="min-h-11 rounded-md border border-emerald-400/30 px-3 text-xs font-semibold text-emerald-300">Mensagem WhatsApp</button>
-                          <button type="button" onClick={() => openGoogleCalendar(sale)} className="min-h-11 rounded-md border border-white/15 px-3 text-xs font-semibold text-stone-300">Adicionar ao Google Agenda</button>
+                          <button type="button" disabled={!googleStatus.connected || googleBusy || sale.status === "pago" || !sale.expectedPaymentDate} onClick={() => void syncSaleWithGoogle(sale)} className="min-h-11 rounded-md border border-blue-400/30 px-3 text-xs font-semibold text-blue-200 disabled:opacity-40">{sale.googleCalendarEventId ? "Atualizar lembrete no Google Agenda" : "Criar lembrete no Google Agenda"}</button>
                         </div>
+                        {sale.googleCalendarEventId ? <div className="mt-3 flex flex-wrap items-center gap-3 text-xs"><span className="text-emerald-300">Lembrete criado</span>{sale.googleCalendarEventLink ? <a href={sale.googleCalendarEventLink} target="_blank" rel="noreferrer" className="text-blue-300 underline">Abrir no Google Agenda</a> : null}</div> : null}
                       </article>
                     ))}
                   </div>

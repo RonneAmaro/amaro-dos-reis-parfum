@@ -30,6 +30,10 @@ export type LocalSale = {
   totalAmount?: number;
   amountPaid?: number;
   remainingAmount?: number;
+  googleCalendarEventId?: string;
+  googleCalendarEventLink?: string;
+  googleCalendarSyncedAt?: string;
+  googleCalendarStatus?: string;
 };
 
 export type LocalInventoryItem = {
@@ -69,6 +73,10 @@ type SupabaseSaleRecord = {
   total_amount?: number | string | null;
   amount_paid?: number | string | null;
   remaining_amount?: number | string | null;
+  google_calendar_event_id?: string | null;
+  google_calendar_event_link?: string | null;
+  google_calendar_synced_at?: string | null;
+  google_calendar_status?: string | null;
 };
 
 type SupabaseInventoryRecord = {
@@ -195,6 +203,10 @@ export function mapLocalSaleToSupabaseInsert(sale: LocalSale) {
     total_amount: sale.totalAmount ?? null,
     amount_paid: sale.amountPaid ?? null,
     remaining_amount: sale.remainingAmount ?? null,
+    google_calendar_event_id: sale.googleCalendarEventId ?? null,
+    google_calendar_event_link: sale.googleCalendarEventLink ?? null,
+    google_calendar_synced_at: sale.googleCalendarSyncedAt ?? null,
+    google_calendar_status: sale.googleCalendarStatus ?? null,
     synced_at: new Date().toISOString(),
   };
 }
@@ -239,6 +251,10 @@ export function mapSupabaseSaleToLocal(row: SupabaseSaleRecord): LocalSale {
     totalAmount: row.total_amount == null ? undefined : safeNumber(row.total_amount),
     amountPaid: row.amount_paid == null ? undefined : safeNumber(row.amount_paid),
     remainingAmount: row.remaining_amount == null ? undefined : safeNumber(row.remaining_amount),
+    googleCalendarEventId: safeString(row.google_calendar_event_id) || undefined,
+    googleCalendarEventLink: safeString(row.google_calendar_event_link) || undefined,
+    googleCalendarSyncedAt: optionalIso(row.google_calendar_synced_at) ?? undefined,
+    googleCalendarStatus: safeString(row.google_calendar_status) || undefined,
   };
 }
 
