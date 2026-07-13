@@ -19,6 +19,18 @@ import {
   toLocalDateInput,
   type ExpectedPaymentMethod,
 } from "@/lib/admin/receivables";
+import {
+  calculateFlexibleSale,
+  createFlexibleItem,
+  getRemainingAmount,
+  getSaleItems,
+  getSaleTotal,
+  itemTypeLabel,
+  summarizeSaleItems,
+  type FlexibleSaleItem,
+  type SaleItemType,
+} from "@/lib/admin/flexibleSales";
+import { parseSalesAssistant } from "@/lib/admin/salesAssistant";
 
 const INVENTORY_STORAGE_KEY = "amaro_inventory_v1";
 const BACKUP_VERSION = "amaro_backup_v1";
@@ -27,7 +39,7 @@ const SYNC_TOKEN_STORAGE_KEY = "amaro_admin_sync_token";
 
 type LineType = "tradicional" | "arabe";
 type PaymentMethod = "dinheiro" | "pix" | "cartao" | "fiado";
-type SaleStatus = "pago" | "pendente" | "fiado";
+type SaleStatus = "pago" | "pendente" | "fiado" | "partial";
 type SaleFilter = "todos" | "pagos" | "pendentes";
 
 type Sale = {
@@ -49,6 +61,12 @@ type Sale = {
   expectedPaymentDate?: string;
   expectedPaymentMethod?: ExpectedPaymentMethod;
   collectionNote?: string;
+  items?: FlexibleSaleItem[];
+  subtotal?: number;
+  discountValue?: number;
+  totalAmount?: number;
+  amountPaid?: number;
+  remainingAmount?: number;
 };
 
 type SaleForm = {
@@ -63,6 +81,10 @@ type SaleForm = {
   expectedPaymentDate: string;
   expectedPaymentMethod: ExpectedPaymentMethod;
   collectionNote: string;
+  manualUnitPrice: number;
+  itemDiscountValue: number;
+  itemType: SaleItemType;
+  amountPaid: number;
 };
 
 type InventoryItem = {
@@ -121,6 +143,7 @@ const statusOptions: { value: SaleStatus; label: string }[] = [
   { value: "pago", label: "Pago" },
   { value: "pendente", label: "Pendente" },
   { value: "fiado", label: "Fiado" },
+  { value: "partial", label: "Parcialmente pago" },
 ];
 
 const expectedPaymentOptions: { value: ExpectedPaymentMethod; label: string }[] = [
@@ -151,6 +174,10 @@ const initialSaleForm: SaleForm = {
   expectedPaymentDate: "",
   expectedPaymentMethod: "pix",
   collectionNote: "",
+  manualUnitPrice: getLinePrice(getSuggestedLineType(defaultPerfume)),
+  itemDiscountValue: 0,
+  itemType: "sale",
+  amountPaid: 0,
 };
 
 const initialInventoryForm: InventoryForm = {
@@ -241,7 +268,7 @@ function normalizePaymentMethod(value: unknown): PaymentMethod {
 }
 
 function normalizeStatus(value: unknown): SaleStatus {
-  return value === "pendente" || value === "fiado" ? value : "pago";
+  return value === "pendente" || value === "fiado" || value === "partial" ? value : "pago";
 }
 
 function normalizeExpectedPaymentMethod(value: unknown): ExpectedPaymentMethod | undefined {
@@ -291,10 +318,32 @@ function getSaleUnitCost(sale: Sale) {
 }
 
 function getSaleEstimatedProfit(sale: Sale) {
+  if (sale.items?.length) {
+    return calculateFlexibleSale(sale.items, sale.amountPaid).estimatedProfit;
+  }
   return (
     sale.estimatedProfit ??
     (sale.unitPrice - getSaleUnitCost(sale)) * sale.quantity
   );
+}
+
+function normalizeSaleItem(value: unknown): FlexibleSaleItem | null {
+  if (!isRecord(value) || typeof value.perfumeName !== "string") return null;
+  const itemType: SaleItemType = value.itemType === "gift" || value.itemType === "personal_use" || value.itemType === "sample" || value.itemType === "exchange" ? value.itemType : "sale";
+  const lineType = value.lineType === "arabe" || value.lineType === "outro" ? value.lineType : "tradicional";
+  return createFlexibleItem({
+    id: typeof value.id === "string" ? value.id : createId(),
+    perfumeSlug: typeof value.perfumeSlug === "string" ? value.perfumeSlug : undefined,
+    perfumeName: value.perfumeName,
+    lineType,
+    quantity: Number(value.quantity) || 1,
+    unitPrice: Number(value.unitPrice) || 0,
+    originalUnitPrice: Number(value.originalUnitPrice) || Number(value.unitPrice) || 0,
+    unitCost: Number(value.unitCost) || 0,
+    discountValue: Number(value.discountValue) || 0,
+    itemType,
+    notes: typeof value.notes === "string" ? value.notes : undefined,
+  });
 }
 
 function normalizeSale(value: unknown): Sale | null {
@@ -321,6 +370,9 @@ function normalizeSale(value: unknown): Sale | null {
       ? value.createdAt
       : new Date().toISOString();
   const paidAt = typeof value.paidAt === "string" ? value.paidAt : undefined;
+  const items = Array.isArray(value.items)
+    ? value.items.map(normalizeSaleItem).filter((item): item is FlexibleSaleItem => item !== null)
+    : undefined;
 
   return {
     id: typeof value.id === "string" ? value.id : createId(),
@@ -350,6 +402,12 @@ function normalizeSale(value: unknown): Sale | null {
     expectedPaymentDate: typeof value.expectedPaymentDate === "string" ? value.expectedPaymentDate : undefined,
     expectedPaymentMethod: normalizeExpectedPaymentMethod(value.expectedPaymentMethod),
     collectionNote: typeof value.collectionNote === "string" ? value.collectionNote : undefined,
+    items: items?.length ? items : undefined,
+    subtotal: typeof value.subtotal === "number" ? value.subtotal : undefined,
+    discountValue: typeof value.discountValue === "number" ? value.discountValue : undefined,
+    totalAmount: typeof value.totalAmount === "number" ? value.totalAmount : undefined,
+    amountPaid: typeof value.amountPaid === "number" ? value.amountPaid : undefined,
+    remainingAmount: typeof value.remainingAmount === "number" ? value.remainingAmount : undefined,
   };
 }
 
@@ -522,6 +580,10 @@ export default function AdminPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [saleForm, setSaleForm] = useState<SaleForm>(initialSaleForm);
+  const [saleCart, setSaleCart] = useState<FlexibleSaleItem[]>([]);
+  const [assistantText, setAssistantText] = useState("");
+  const [assistantMessage, setAssistantMessage] = useState("");
+  const [isListening, setIsListening] = useState(false);
   const [inventoryForm, setInventoryForm] =
     useState<InventoryForm>(initialInventoryForm);
   const [filter, setFilter] = useState<SaleFilter>("todos");
@@ -570,6 +632,10 @@ export default function AdminPage() {
     currentInventoryItem?.lineType === saleForm.lineType
       ? currentInventoryItem.unitCost
       : getDefaultUnitCost(saleForm.lineType);
+  const cartTotals = useMemo(
+    () => calculateFlexibleSale(saleCart, saleForm.amountPaid),
+    [saleCart, saleForm.amountPaid]
+  );
   const inventoryUnitProfit = inventoryForm.salePrice - inventoryForm.unitCost;
   const inventoryMargin =
     inventoryForm.salePrice > 0
@@ -579,18 +645,20 @@ export default function AdminPage() {
   const summary = useMemo(() => {
     const salesSummary = sales.reduce(
       (totals, sale) => {
-        const saleTotal = sale.unitPrice * sale.quantity;
-        const saleCost = getSaleUnitCost(sale) * sale.quantity;
+        const saleTotal = getSaleTotal(sale);
+        const saleCost = sale.items?.length
+          ? sale.items.reduce((sum, item) => sum + item.unitCost * item.quantity, 0)
+          : getSaleUnitCost(sale) * sale.quantity;
 
         totals.totalSold += saleTotal;
-        totals.perfumeCount += sale.quantity;
+        totals.perfumeCount += getSaleItems(sale).reduce((sum, item) => sum + item.quantity, 0);
         totals.estimatedCost += saleCost;
         totals.estimatedProfit += getSaleEstimatedProfit(sale);
 
         if (sale.status === "pago") {
           totals.totalReceived += saleTotal;
         } else {
-          totals.totalPending += saleTotal;
+          totals.totalPending += getRemainingAmount(sale);
         }
 
         return totals;
@@ -661,7 +729,7 @@ export default function AdminPage() {
       semData: pending.filter((sale) => !sale.expectedPaymentDate),
       recebidos: sales.filter((sale) => sale.status === "pago"),
     };
-    const total = (items: Sale[]) => items.reduce((sum, sale) => sum + sale.unitPrice * sale.quantity, 0);
+    const total = (items: Sale[]) => items.reduce((sum, sale) => sum + (sale.status === "pago" ? getSaleTotal(sale) : getRemainingAmount(sale)), 0);
     return {
       groups,
       summary: {
@@ -732,6 +800,7 @@ export default function AdminPage() {
 
   function resetSaleForm() {
     setSaleForm(initialSaleForm);
+    setSaleCart([]);
   }
 
   function resetInventoryForm() {
@@ -747,6 +816,7 @@ export default function AdminPage() {
       ...current,
       perfumeSlug: perfumeSlug(perfume),
       lineType: getSuggestedLineType(perfume),
+      manualUnitPrice: getLinePrice(getSuggestedLineType(perfume)),
     }));
   }
 
@@ -798,6 +868,50 @@ export default function AdminPage() {
     }));
   }
 
+  function addItemToCart() {
+    const inventoryItem = inventory.find((item) => item.perfumeSlug === saleForm.perfumeSlug);
+    if (!inventoryItem && !window.confirm("Este perfume não possui estoque cadastrado. Adicionar mesmo assim?")) return;
+    setSaleCart((current) => [...current, createFlexibleItem({
+      id: createId(), perfumeSlug: perfumeSlug(selectedSalePerfume), perfumeName: selectedSalePerfume.name,
+      lineType: saleForm.lineType, quantity: saleForm.quantity,
+      unitPrice: saleForm.manualUnitPrice, originalUnitPrice: saleUnitPrice,
+      unitCost: saleUnitCost, discountValue: saleForm.itemDiscountValue,
+      itemType: saleForm.itemType,
+    })]);
+    setSaleForm((current) => ({ ...current, quantity: 1, itemDiscountValue: 0, itemType: "sale" }));
+  }
+
+  function applyAssistantPreview() {
+    const result = parseSalesAssistant(assistantText, perfumeCommerce.map((perfume) => {
+      const slug = perfumeSlug(perfume);
+      const stored = inventory.find((item) => item.perfumeSlug === slug);
+      const lineType = getSuggestedLineType(perfume);
+      return { slug, name: perfume.name, lineType, unitPrice: stored?.salePrice ?? getLinePrice(lineType), unitCost: stored?.unitCost ?? getDefaultUnitCost(lineType) };
+    }));
+    if (!result.items.length) { setAssistantMessage(result.notes.join(" ")); return; }
+    setSaleCart(result.items);
+    setSaleForm((current) => ({ ...current, customerName: result.customerName,
+      paymentMethod: result.paymentMethod, status: result.status,
+      expectedPaymentDate: result.expectedPaymentDate ?? "",
+      expectedPaymentMethod: result.expectedPaymentMethod ?? current.expectedPaymentMethod,
+      amountPaid: result.amountPaid ?? 0 }));
+    setAssistantMessage(`Prévia criada com ${result.items.length} item(ns). Revise antes de registrar.`);
+  }
+
+  function startVoiceInput() {
+    type SpeechRecognitionInstance = { lang: string; interimResults: boolean; start(): void;
+      onresult: ((event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void) | null;
+      onend: (() => void) | null; onerror: (() => void) | null };
+    type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+    const speechWindow = window as typeof window & { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor };
+    const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+    if (!Recognition) { setAssistantMessage("Reconhecimento de voz não disponível neste navegador. Digite a venda no campo de texto."); return; }
+    const recognition = new Recognition(); recognition.lang = "pt-BR"; recognition.interimResults = false;
+    recognition.onresult = (event) => setAssistantText(event.results[0][0].transcript);
+    recognition.onend = () => setIsListening(false); recognition.onerror = () => setIsListening(false);
+    setIsListening(true); recognition.start();
+  }
+
   function registerSale(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -807,59 +921,53 @@ export default function AdminPage() {
       return;
     }
 
-    const quantity = Math.max(1, Math.floor(Number(saleForm.quantity) || 1));
+    if (saleCart.length === 0) {
+      setSaleNotice("Adicione pelo menos um perfume ao carrinho antes de registrar.");
+      return;
+    }
     const now = new Date().toISOString();
-    const inventoryItem = inventory.find(
-      (item) => item.perfumeSlug === perfumeSlug(selectedSalePerfume)
-    );
-    const unitCost =
-      inventoryItem?.lineType === saleForm.lineType
-        ? inventoryItem.unitCost
-        : getDefaultUnitCost(saleForm.lineType);
-    const unitPrice =
-      inventoryItem?.lineType === saleForm.lineType
-        ? inventoryItem.salePrice
-        : getLinePrice(saleForm.lineType);
-    const estimatedProfit = (unitPrice - unitCost) * quantity;
+    const requestedPaid = saleForm.status === "pago" ? cartTotals.totalAmount : saleForm.amountPaid;
+    const totals = calculateFlexibleSale(saleCart, requestedPaid);
+    const status: SaleStatus = totals.remainingAmount <= 0 ? "pago"
+      : totals.amountPaid > 0 ? "partial" : saleForm.status === "fiado" ? "fiado" : "pendente";
+    const firstItem = saleCart[0];
     const sale: Sale = {
       id: createId(),
       customerName,
-      perfumeSlug: perfumeSlug(selectedSalePerfume),
-      perfumeName: selectedSalePerfume.name,
-      lineType: saleForm.lineType,
-      unitPrice,
-      unitCost,
-      estimatedProfit,
-      quantity,
+      perfumeSlug: firstItem.perfumeSlug ?? "",
+      perfumeName: firstItem.perfumeName,
+      lineType: firstItem.lineType === "outro" ? "tradicional" : firstItem.lineType,
+      unitPrice: firstItem.unitPrice,
+      unitCost: firstItem.unitCost,
+      estimatedProfit: totals.estimatedProfit,
+      quantity: totals.totalQuantity,
       paymentMethod: saleForm.paymentMethod,
-      status: saleForm.status,
+      status,
       notes: saleForm.notes.trim(),
       createdAt: now,
-      paidAt: saleForm.status === "pago" ? now : undefined,
+      paidAt: status === "pago" ? now : undefined,
       customerPhone: saleForm.customerPhone.trim() || undefined,
       expectedPaymentDate: saleForm.expectedPaymentDate || undefined,
       expectedPaymentMethod: saleForm.expectedPaymentMethod,
       collectionNote: saleForm.collectionNote.trim() || undefined,
+      items: saleCart,
+      subtotal: totals.subtotal,
+      discountValue: totals.discountValue,
+      totalAmount: totals.totalAmount,
+      amountPaid: totals.amountPaid,
+      remainingAmount: totals.remainingAmount,
     };
 
     setSales((currentSales) => [sale, ...currentSales]);
 
-    if (inventoryItem) {
-      setInventory((currentInventory) =>
-        currentInventory.map((item) =>
-          item.perfumeSlug === inventoryItem.perfumeSlug
-            ? {
-                ...item,
-                stockQuantity: Math.max(0, item.stockQuantity - quantity),
-                updatedAt: now,
-              }
-            : item
-        )
-      );
-      setSaleNotice("");
-    } else {
-      setSaleNotice("Este perfume ainda não possui estoque cadastrado.");
-    }
+    const consumedBySlug = saleCart.reduce<Record<string, number>>((result, item) => {
+      if (item.perfumeSlug) result[item.perfumeSlug] = (result[item.perfumeSlug] ?? 0) + item.quantity;
+      return result;
+    }, {});
+    setInventory((currentInventory) => currentInventory.map((item) => consumedBySlug[item.perfumeSlug]
+      ? { ...item, stockQuantity: Math.max(0, item.stockQuantity - consumedBySlug[item.perfumeSlug]), updatedAt: now }
+      : item));
+    setSaleNotice("");
 
     resetSaleForm();
   }
@@ -933,6 +1041,8 @@ export default function AdminPage() {
               ...sale,
               status: "pago",
               paidAt: sale.paidAt ?? now,
+              amountPaid: getSaleTotal(sale),
+              remainingAmount: 0,
             }
           : sale
       )
@@ -985,46 +1095,28 @@ export default function AdminPage() {
   function exportSalesCsv() {
     const today = new Date().toISOString().slice(0, 10);
     const rows = [
-      [
-        "ID",
-        "Cliente",
-        "Perfume",
-        "Linha",
-        "Preço unitário",
-        "Custo unitário",
-        "Quantidade",
-        "Valor total",
-        "Lucro estimado",
-        "Forma de pagamento",
-        "Status",
-        "Data",
-        "Pago em",
-        "Observação",
-        "Telefone do cliente",
-        "Data prevista de recebimento",
-        "Forma prevista",
-        "Observação de cobrança",
-      ],
+      ["ID", "Cliente", "Resumo dos itens", "Quantidade total", "Subtotal",
+        "Desconto", "Total", "Pago", "Pendente", "Forma de pagamento", "Status",
+        "Data", "Pago em", "Data prevista", "Telefone", "Observação", "Observação de cobrança"],
       ...sales.map((sale) => [
         sale.id,
         sale.customerName,
-        sale.perfumeName,
-        lineLabel(sale.lineType),
-        sale.unitPrice.toFixed(2),
-        getSaleUnitCost(sale).toFixed(2),
-        sale.quantity,
-        (sale.unitPrice * sale.quantity).toFixed(2),
-        getSaleEstimatedProfit(sale).toFixed(2),
+        summarizeSaleItems(sale),
+        getSaleItems(sale).reduce((sum, item) => sum + item.quantity, 0),
+        (sale.subtotal ?? getSaleTotal(sale)).toFixed(2),
+        (sale.discountValue ?? 0).toFixed(2),
+        getSaleTotal(sale).toFixed(2),
+        (sale.amountPaid ?? (sale.status === "pago" ? getSaleTotal(sale) : 0)).toFixed(2),
+        getRemainingAmount(sale).toFixed(2),
         paymentOptions.find((option) => option.value === sale.paymentMethod)
           ?.label ?? sale.paymentMethod,
         statusOptions.find((option) => option.value === sale.status)?.label ??
           sale.status,
         sale.createdAt,
         sale.paidAt ?? "",
-        sale.notes,
-        sale.customerPhone ?? "",
         sale.expectedPaymentDate ?? "",
-        expectedPaymentMethodLabel(sale.expectedPaymentMethod),
+        sale.customerPhone ?? "",
+        sale.notes,
         sale.collectionNote ?? "",
       ]),
     ];
@@ -1594,14 +1686,14 @@ export default function AdminPage() {
                         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                           <div>
                             <p className="text-lg font-semibold text-white">{sale.customerName}</p>
-                            <p className="mt-1 text-sm text-stone-400">{sale.perfumeName} · {sale.quantity} un.</p>
+                            <p className="mt-1 text-sm text-stone-400">{summarizeSaleItems(sale)}</p>
                           </div>
                           <span className={`w-fit rounded-md border px-2.5 py-1 text-xs font-bold uppercase tracking-[0.12em] ${sale.status === "pago" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300" : sale.status === "fiado" ? "border-orange-400/30 bg-orange-400/10 text-orange-200" : "border-gold/30 bg-gold/10 text-gold-light"}`}>
                             {sale.status}
                           </span>
                         </div>
                         <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                          <div><p className="text-xs text-stone-500">{sale.status === "pago" ? "Valor total" : "Valor pendente"}</p><p className="mt-1 font-semibold text-gold-light">{formatCurrency(sale.unitPrice * sale.quantity)}</p></div>
+                          <div><p className="text-xs text-stone-500">{sale.status === "pago" ? "Valor total" : "Valor pendente"}</p><p className="mt-1 font-semibold text-gold-light">{formatCurrency(sale.status === "pago" ? getSaleTotal(sale) : getRemainingAmount(sale))}</p></div>
                           <div><p className="text-xs text-stone-500">Data prevista</p><p className="mt-1 text-stone-200">{formatReceivableDate(sale.expectedPaymentDate)}</p></div>
                           <div><p className="text-xs text-stone-500">Forma prevista</p><p className="mt-1 text-stone-200">{expectedPaymentMethodLabel(sale.expectedPaymentMethod)}</p></div>
                           <div><p className="text-xs text-stone-500">Telefone</p><p className="mt-1 text-stone-200">{sale.customerPhone || "Não informado"}</p></div>
@@ -2009,6 +2101,20 @@ export default function AdminPage() {
           </div>
         </section>
 
+        <section className="rounded-xl border border-gold/25 bg-gradient-to-br from-gold/10 to-black/40 p-5 sm:p-7">
+          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-gold">Cadastro por texto ou voz</p>
+          <h2 className="mt-2 text-2xl font-semibold text-white">Assistente rápido de venda</h2>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-stone-400">Descreva a venda. O assistente monta apenas uma prévia no carrinho para você revisar.</p>
+          <textarea value={assistantText} onChange={(event) => setAssistantText(event.target.value)} rows={3}
+            placeholder="Vendi para Fábio 1 Sultan Noir pago no pix e 1 Moon Candy fiado para dia 15"
+            className="mt-5 w-full resize-none rounded-lg border border-gold/25 bg-black/70 px-4 py-3 text-white outline-none focus:border-gold" />
+          <div className="mt-3 grid gap-2 sm:flex sm:flex-wrap">
+            <button type="button" onClick={applyAssistantPreview} disabled={!assistantText.trim()} className="min-h-12 rounded-md bg-gold px-5 text-xs font-bold uppercase tracking-[0.15em] text-black disabled:opacity-40">Montar prévia</button>
+            <button type="button" onClick={startVoiceInput} disabled={isListening} className="min-h-12 rounded-md border border-gold/40 px-5 text-xs font-bold uppercase tracking-[0.15em] text-gold-light disabled:opacity-50">{isListening ? "Ouvindo..." : "Falar venda"}</button>
+          </div>
+          {assistantMessage ? <p className="mt-4 rounded-md border border-white/10 bg-black/40 p-3 text-sm text-stone-300">{assistantMessage}</p> : null}
+        </section>
+
         <section
           id="vendas"
           className="grid scroll-mt-28 gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)]"
@@ -2085,6 +2191,7 @@ export default function AdminPage() {
                       setSaleForm((current) => ({
                         ...current,
                         lineType: event.target.value as LineType,
+                        manualUnitPrice: getLinePrice(event.target.value as LineType),
                       }))
                     }
                     className="mt-2 w-full rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-white outline-none transition focus:border-gold"
@@ -2099,12 +2206,15 @@ export default function AdminPage() {
 
                 <label>
                   <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
-                    Preço de venda
+                    Preço unitário (editável)
                   </span>
                   <input
-                    value={formatCurrency(saleUnitPrice)}
-                    readOnly
-                    className="mt-2 w-full rounded-md border border-gold/20 bg-black/70 px-4 py-3 text-sm text-gold-light outline-none"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={saleForm.manualUnitPrice}
+                    onChange={(event) => setSaleForm((current) => ({ ...current, manualUnitPrice: clampNumber(event.target.value, saleUnitPrice) }))}
+                    className="mt-2 w-full rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-gold-light outline-none focus:border-gold"
                   />
                 </label>
               </div>
@@ -2133,7 +2243,7 @@ export default function AdminPage() {
                     Total da venda
                   </span>
                   <input
-                    value={formatCurrency(saleUnitPrice * saleForm.quantity)}
+                    value={formatCurrency(Math.max(0, saleForm.manualUnitPrice * saleForm.quantity - saleForm.itemDiscountValue))}
                     readOnly
                     className="mt-2 w-full rounded-md border border-gold/20 bg-black/70 px-4 py-3 text-sm text-gold-light outline-none"
                   />
@@ -2158,12 +2268,52 @@ export default function AdminPage() {
                   </span>
                   <input
                     value={formatCurrency(
-                      (saleUnitPrice - saleUnitCost) * saleForm.quantity
+                      Math.max(0, saleForm.manualUnitPrice * saleForm.quantity - saleForm.itemDiscountValue) - saleUnitCost * saleForm.quantity
                     )}
                     readOnly
                     className="mt-2 w-full rounded-md border border-gold/20 bg-black/70 px-4 py-3 text-sm text-gold-light outline-none"
                   />
                 </label>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label>
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Desconto deste item (R$)</span>
+                  <input type="number" min={0} step="0.01" value={saleForm.itemDiscountValue}
+                    onChange={(event) => setSaleForm((current) => ({ ...current, itemDiscountValue: clampNumber(event.target.value) }))}
+                    className="mt-2 w-full rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-white outline-none focus:border-gold" />
+                </label>
+                <label>
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Tipo do item</span>
+                  <select value={saleForm.itemType} onChange={(event) => setSaleForm((current) => ({ ...current, itemType: event.target.value as SaleItemType }))}
+                    className="mt-2 w-full rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-white outline-none focus:border-gold">
+                    {(["sale", "gift", "personal_use", "sample", "exchange"] as SaleItemType[]).map((type) => <option key={type} value={type}>{itemTypeLabel(type)}</option>)}
+                  </select>
+                </label>
+              </div>
+
+              <button type="button" onClick={addItemToCart} className="min-h-12 rounded-md border border-gold/45 bg-gold/10 px-5 text-xs font-bold uppercase tracking-[0.16em] text-gold-light">
+                Adicionar perfume ao carrinho
+              </button>
+
+              <div className="rounded-lg border border-gold/20 bg-black/40 p-4">
+                <div className="flex items-center justify-between"><h3 className="font-semibold text-white">Carrinho da venda</h3><span className="text-xs text-stone-400">{saleCart.length} item(ns)</span></div>
+                <div className="mt-3 grid gap-2">
+                  {saleCart.length === 0 ? <p className="text-sm text-stone-500">Adicione um ou mais perfumes antes de registrar.</p> : saleCart.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between gap-3 rounded-md border border-white/10 p-3">
+                      <div><p className="text-sm font-semibold text-white">{item.quantity}x {item.perfumeName}</p><p className="mt-1 text-xs text-stone-400">{itemTypeLabel(item.itemType)} · {formatCurrency(item.total)}{item.discountValue ? ` · desconto ${formatCurrency(item.discountValue)}` : ""}</p></div>
+                      <button type="button" onClick={() => setSaleCart((current) => current.filter((stored) => stored.id !== item.id))} className="min-h-10 rounded-md border border-red-400/30 px-3 text-xs text-red-200">Remover</button>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                  <div><p className="text-xs text-stone-500">Subtotal</p><p className="mt-1 text-white">{formatCurrency(cartTotals.subtotal)}</p></div>
+                  <div><p className="text-xs text-stone-500">Desconto</p><p className="mt-1 text-white">{formatCurrency(cartTotals.discountValue)}</p></div>
+                  <div><p className="text-xs text-stone-500">Total final</p><p className="mt-1 font-semibold text-gold-light">{formatCurrency(cartTotals.totalAmount)}</p></div>
+                  <div><p className="text-xs text-stone-500">Custo / lucro</p><p className="mt-1 text-white">{formatCurrency(cartTotals.estimatedCost)} / {formatCurrency(cartTotals.estimatedProfit)}</p></div>
+                  <div><p className="text-xs text-stone-500">Perfumes</p><p className="mt-1 text-white">{cartTotals.totalQuantity}</p></div>
+                  <div><p className="text-xs text-stone-500">Itens</p><p className="mt-1 text-white">{cartTotals.itemCount}</p></div>
+                </div>
               </div>
 
               <label>
@@ -2205,6 +2355,15 @@ export default function AdminPage() {
                     </option>
                   ))}
                 </select>
+              </label>
+
+              <label>
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Valor pago agora</span>
+                <input type="number" min={0} step="0.01" value={saleForm.status === "pago" ? cartTotals.totalAmount : saleForm.amountPaid}
+                  disabled={saleForm.status === "pago"}
+                  onChange={(event) => setSaleForm((current) => ({ ...current, amountPaid: clampNumber(event.target.value) }))}
+                  className="mt-2 w-full rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-white outline-none focus:border-gold disabled:text-emerald-300" />
+                <p className="mt-2 text-xs text-stone-500">Restante calculado: {formatCurrency(saleForm.status === "pago" ? 0 : calculateFlexibleSale(saleCart, saleForm.amountPaid).remainingAmount)}</p>
               </label>
 
               <div className="rounded-lg border border-gold/20 bg-black/35 p-4">
@@ -2351,8 +2510,8 @@ export default function AdminPage() {
                     </tr>
                   ) : (
                     filteredSales.map((sale) => {
-                      const total = sale.unitPrice * sale.quantity;
-                      const saleCost = getSaleUnitCost(sale) * sale.quantity;
+                      const total = getSaleTotal(sale);
+                      const saleCost = getSaleItems(sale).reduce((sum, item) => sum + item.unitCost * item.quantity, 0);
                       const profit = getSaleEstimatedProfit(sale);
 
                       return (
@@ -2364,12 +2523,12 @@ export default function AdminPage() {
                             {sale.customerName}
                           </td>
                           <td className="max-w-[160px] py-4 pr-4">
-                            {sale.perfumeName}
+                            {summarizeSaleItems(sale)}
                           </td>
                           <td className="py-4 pr-4">
                             {lineLabel(sale.lineType)}
                           </td>
-                          <td className="py-4 pr-4">{sale.quantity}</td>
+                          <td className="py-4 pr-4">{getSaleItems(sale).reduce((sum, item) => sum + item.quantity, 0)}</td>
                           <td className="py-4 pr-4 font-semibold text-gold-light">
                             {formatCurrency(total)}
                           </td>

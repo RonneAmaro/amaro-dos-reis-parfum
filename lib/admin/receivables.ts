@@ -1,4 +1,6 @@
-export type ReceivableStatus = "pago" | "pendente" | "fiado";
+import { getRemainingAmount, getSaleItems, getSaleTotal, summarizeSaleItems, type FlexibleSaleItem } from "./flexibleSales";
+
+export type ReceivableStatus = "pago" | "pendente" | "fiado" | "partial";
 export type ExpectedPaymentMethod =
   | "pix"
   | "dinheiro"
@@ -7,6 +9,7 @@ export type ExpectedPaymentMethod =
   | "outro";
 
 export type ReceivableSale = {
+  id: string;
   customerName: string;
   customerPhone?: string;
   perfumeName: string;
@@ -17,6 +20,10 @@ export type ReceivableSale = {
   expectedPaymentMethod?: ExpectedPaymentMethod;
   collectionNote?: string;
   paidAt?: string;
+  items?: FlexibleSaleItem[];
+  totalAmount?: number;
+  amountPaid?: number;
+  remainingAmount?: number;
 };
 
 export function toLocalDateInput(date = new Date()): string {
@@ -55,12 +62,12 @@ export function expectedPaymentMethodLabel(method?: ExpectedPaymentMethod) {
 }
 
 export function createCollectionMessage(sale: ReceivableSale): string {
-  const total = sale.unitPrice * sale.quantity;
+  const total = getRemainingAmount(sale);
   const value = new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
   }).format(total);
-  return `Olá${sale.customerName ? `, ${sale.customerName}` : ""}, tudo bem? Passando para lembrar do pagamento do perfume AMARO DOS REIS PARFUM. Referente ao perfume ${sale.perfumeName}, no valor de ${value}. Qualquer coisa fico à disposição.`;
+  return `Olá${sale.customerName ? `, ${sale.customerName}` : ""}, tudo bem? Passando para lembrar do pagamento da AMARO DOS REIS PARFUM. Referente a ${summarizeSaleItems(sale)}, no valor pendente de ${value}. Qualquer coisa fico à disposição.`;
 }
 
 export function createWhatsAppCollectionUrl(sale: ReceivableSale): string {
@@ -78,11 +85,11 @@ export function createGoogleCalendarUrl(sale: ReceivableSale): string | null {
   const total = new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
-  }).format(sale.unitPrice * sale.quantity);
+  }).format(getRemainingAmount(sale) || getSaleTotal(sale));
   const details = [
     `Cliente: ${sale.customerName}`,
-    `Perfume: ${sale.perfumeName}`,
-    `Quantidade: ${sale.quantity}`,
+    `Itens: ${summarizeSaleItems(sale)}`,
+    `Quantidade: ${getSaleItems(sale).reduce((sum, item) => sum + item.quantity, 0)}`,
     `Valor: ${total}`,
     `Forma prevista: ${expectedPaymentMethodLabel(sale.expectedPaymentMethod)}`,
     sale.collectionNote ? `Observação: ${sale.collectionNote}` : "",

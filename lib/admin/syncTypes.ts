@@ -1,6 +1,8 @@
+import type { FlexibleSaleItem } from "./flexibleSales";
+
 type LineType = "tradicional" | "arabe";
 type PaymentMethod = "dinheiro" | "pix" | "cartao" | "fiado";
-type SaleStatus = "pago" | "pendente" | "fiado";
+type SaleStatus = "pago" | "pendente" | "fiado" | "partial";
 type ExpectedPaymentMethod = "pix" | "dinheiro" | "cartao" | "salario" | "outro";
 
 export type LocalSale = {
@@ -22,6 +24,12 @@ export type LocalSale = {
   expectedPaymentDate?: string;
   expectedPaymentMethod?: ExpectedPaymentMethod;
   collectionNote?: string;
+  items?: FlexibleSaleItem[];
+  subtotal?: number;
+  discountValue?: number;
+  totalAmount?: number;
+  amountPaid?: number;
+  remainingAmount?: number;
 };
 
 export type LocalInventoryItem = {
@@ -55,6 +63,12 @@ type SupabaseSaleRecord = {
   expected_payment_date?: string | null;
   expected_payment_method?: string | null;
   collection_note?: string | null;
+  items?: unknown;
+  subtotal?: number | string | null;
+  discount_value?: number | string | null;
+  total_amount?: number | string | null;
+  amount_paid?: number | string | null;
+  remaining_amount?: number | string | null;
 };
 
 type SupabaseInventoryRecord = {
@@ -123,7 +137,7 @@ function normalizePaymentMethod(value: unknown): PaymentMethod {
 }
 
 function normalizeStatus(value: unknown): SaleStatus {
-  return value === "pendente" || value === "fiado" ? value : "pago";
+  return value === "pendente" || value === "fiado" || value === "partial" ? value : "pago";
 }
 
 function normalizeExpectedPaymentMethod(value: unknown): ExpectedPaymentMethod | undefined {
@@ -175,6 +189,12 @@ export function mapLocalSaleToSupabaseInsert(sale: LocalSale) {
     expected_payment_date: safeString(sale.expectedPaymentDate) || null,
     expected_payment_method: sale.expectedPaymentMethod ?? null,
     collection_note: safeString(sale.collectionNote) || null,
+    items: sale.items ?? null,
+    subtotal: sale.subtotal ?? null,
+    discount_value: sale.discountValue ?? null,
+    total_amount: sale.totalAmount ?? null,
+    amount_paid: sale.amountPaid ?? null,
+    remaining_amount: sale.remainingAmount ?? null,
     synced_at: new Date().toISOString(),
   };
 }
@@ -213,6 +233,12 @@ export function mapSupabaseSaleToLocal(row: SupabaseSaleRecord): LocalSale {
     expectedPaymentDate: safeString(row.expected_payment_date) || undefined,
     expectedPaymentMethod: normalizeExpectedPaymentMethod(row.expected_payment_method),
     collectionNote: safeString(row.collection_note) || undefined,
+    items: Array.isArray(row.items) ? row.items as FlexibleSaleItem[] : undefined,
+    subtotal: row.subtotal == null ? undefined : safeNumber(row.subtotal),
+    discountValue: row.discount_value == null ? undefined : safeNumber(row.discount_value),
+    totalAmount: row.total_amount == null ? undefined : safeNumber(row.total_amount),
+    amountPaid: row.amount_paid == null ? undefined : safeNumber(row.amount_paid),
+    remainingAmount: row.remaining_amount == null ? undefined : safeNumber(row.remaining_amount),
   };
 }
 

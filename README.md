@@ -137,6 +137,28 @@ docs/supabase/receivables-migration.sql
 A migration nao e executada pela aplicacao. Exporte um backup completo antes
 de aplica-la no SQL Editor do Supabase.
 
+## Vendas flexiveis e assistente rapido
+
+O cadastro de vendas funciona como carrinho: permite varios perfumes para o
+mesmo cliente, preco manual, desconto por item, brinde, uso pessoal, amostra,
+troca e pagamento parcial. Itens que nao sao venda baixam estoque, mas ficam
+com total faturado igual a zero. Vendas antigas sem `items` continuam sendo
+tratadas como vendas de item unico.
+
+O Assistente rapido interpreta frases localmente, usando regras e os nomes dos
+perfumes. Ele nao envia dados para servicos externos e nunca salva sem revisao.
+Quando o navegador oferecer Web Speech API, o botao `Falar venda` preenche o
+mesmo campo de texto.
+
+Antes de sincronizar vendas flexiveis, aplique manualmente no Supabase:
+
+```text
+docs/supabase/flexible-sales-migration.sql
+```
+
+Essa migration adiciona `items` em JSONB e os totais opcionais. Ela nao e
+executada automaticamente; exporte um backup antes de aplica-la.
+
 ## Catalogo com fallback
 
 O catalogo publico tenta ler os perfumes do Supabase. Se as variaveis nao
