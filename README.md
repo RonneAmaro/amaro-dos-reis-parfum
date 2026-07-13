@@ -116,6 +116,27 @@ Antes de sincronizar, exporte um backup completo pelo painel `/admin`. Esta
 etapa ainda nao substitui um login final; futuramente a protecao sera evoluida
 com Supabase Auth, RLS e regras administrativas definitivas.
 
+## Agenda de recebimentos
+
+O painel `/admin` possui uma agenda interna para acompanhar vendas pagas,
+pendentes e fiadas, com data prevista, telefone, forma esperada e observacao de
+cobranca. Cada recebimento pode gerar uma mensagem de WhatsApp e um link
+publico de criacao de evento no Google Agenda, sem OAuth ou API externa.
+
+Os novos campos continuam incluidos no backup JSON e na exportacao CSV. Vendas
+antigas sem esses dados permanecem compativeis e aparecem em `Sem data
+definida` quando ainda estiverem pendentes.
+
+Como a sincronizacao do Supabase usa colunas fixas, aplique manualmente a
+migration abaixo antes de enviar vendas com os novos campos:
+
+```text
+docs/supabase/receivables-migration.sql
+```
+
+A migration nao e executada pela aplicacao. Exporte um backup completo antes
+de aplica-la no SQL Editor do Supabase.
+
 ## Catalogo com fallback
 
 O catalogo publico tenta ler os perfumes do Supabase. Se as variaveis nao

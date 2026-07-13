@@ -1,6 +1,7 @@
 type LineType = "tradicional" | "arabe";
 type PaymentMethod = "dinheiro" | "pix" | "cartao" | "fiado";
-type SaleStatus = "pago" | "pendente";
+type SaleStatus = "pago" | "pendente" | "fiado";
+type ExpectedPaymentMethod = "pix" | "dinheiro" | "cartao" | "salario" | "outro";
 
 export type LocalSale = {
   id: string;
@@ -17,6 +18,10 @@ export type LocalSale = {
   notes: string;
   createdAt: string;
   paidAt?: string;
+  customerPhone?: string;
+  expectedPaymentDate?: string;
+  expectedPaymentMethod?: ExpectedPaymentMethod;
+  collectionNote?: string;
 };
 
 export type LocalInventoryItem = {
@@ -34,6 +39,7 @@ type SupabaseSaleRecord = {
   id?: string | null;
   local_id?: string | null;
   customer_name?: string | null;
+  customer_phone?: string | null;
   perfume_slug?: string | null;
   perfume_name?: string | null;
   line_type?: string | null;
@@ -46,6 +52,9 @@ type SupabaseSaleRecord = {
   estimated_profit?: number | string | null;
   created_at?: string | null;
   paid_at?: string | null;
+  expected_payment_date?: string | null;
+  expected_payment_method?: string | null;
+  collection_note?: string | null;
 };
 
 type SupabaseInventoryRecord = {
@@ -114,7 +123,13 @@ function normalizePaymentMethod(value: unknown): PaymentMethod {
 }
 
 function normalizeStatus(value: unknown): SaleStatus {
-  return value === "pendente" ? "pendente" : "pago";
+  return value === "pendente" || value === "fiado" ? value : "pago";
+}
+
+function normalizeExpectedPaymentMethod(value: unknown): ExpectedPaymentMethod | undefined {
+  return value === "pix" || value === "dinheiro" || value === "cartao" || value === "salario" || value === "outro"
+    ? value
+    : undefined;
 }
 
 function defaultSalePrice(lineType: LineType) {
@@ -144,7 +159,7 @@ export function mapLocalSaleToSupabaseInsert(sale: LocalSale) {
   return {
     local_id: safeString(sale.id, `${createdAt}-${safeString(sale.perfumeSlug)}`),
     customer_name: safeString(sale.customerName, "Cliente sem nome"),
-    customer_phone: null,
+    customer_phone: safeString(sale.customerPhone) || null,
     perfume_slug: safeString(sale.perfumeSlug),
     perfume_name: safeString(sale.perfumeName, "Perfume sem nome"),
     line_type: lineType,
@@ -157,6 +172,9 @@ export function mapLocalSaleToSupabaseInsert(sale: LocalSale) {
     estimated_profit: estimatedProfit,
     created_at: createdAt,
     paid_at: optionalIso(sale.paidAt),
+    expected_payment_date: safeString(sale.expectedPaymentDate) || null,
+    expected_payment_method: sale.expectedPaymentMethod ?? null,
+    collection_note: safeString(sale.collectionNote) || null,
     synced_at: new Date().toISOString(),
   };
 }
@@ -191,6 +209,10 @@ export function mapSupabaseSaleToLocal(row: SupabaseSaleRecord): LocalSale {
     notes: safeString(row.notes),
     createdAt: safeIso(row.created_at),
     paidAt: optionalIso(row.paid_at) ?? undefined,
+    customerPhone: safeString(row.customer_phone) || undefined,
+    expectedPaymentDate: safeString(row.expected_payment_date) || undefined,
+    expectedPaymentMethod: normalizeExpectedPaymentMethod(row.expected_payment_method),
+    collectionNote: safeString(row.collection_note) || undefined,
   };
 }
 

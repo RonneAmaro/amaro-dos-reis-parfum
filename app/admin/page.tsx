@@ -9,6 +9,16 @@ import {
 } from "@/lib/perfumes";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { SALES_STORAGE_KEY } from "@/lib/storage-keys";
+import {
+  createCollectionMessage,
+  createGoogleCalendarUrl,
+  createWhatsAppCollectionUrl,
+  expectedPaymentMethodLabel,
+  formatReceivableDate,
+  nextDayOfMonth,
+  toLocalDateInput,
+  type ExpectedPaymentMethod,
+} from "@/lib/admin/receivables";
 
 const INVENTORY_STORAGE_KEY = "amaro_inventory_v1";
 const BACKUP_VERSION = "amaro_backup_v1";
@@ -17,7 +27,7 @@ const SYNC_TOKEN_STORAGE_KEY = "amaro_admin_sync_token";
 
 type LineType = "tradicional" | "arabe";
 type PaymentMethod = "dinheiro" | "pix" | "cartao" | "fiado";
-type SaleStatus = "pago" | "pendente";
+type SaleStatus = "pago" | "pendente" | "fiado";
 type SaleFilter = "todos" | "pagos" | "pendentes";
 
 type Sale = {
@@ -35,6 +45,10 @@ type Sale = {
   notes: string;
   createdAt: string;
   paidAt?: string;
+  customerPhone?: string;
+  expectedPaymentDate?: string;
+  expectedPaymentMethod?: ExpectedPaymentMethod;
+  collectionNote?: string;
 };
 
 type SaleForm = {
@@ -45,6 +59,10 @@ type SaleForm = {
   paymentMethod: PaymentMethod;
   status: SaleStatus;
   notes: string;
+  customerPhone: string;
+  expectedPaymentDate: string;
+  expectedPaymentMethod: ExpectedPaymentMethod;
+  collectionNote: string;
 };
 
 type InventoryItem = {
@@ -102,6 +120,15 @@ const paymentOptions: { value: PaymentMethod; label: string }[] = [
 const statusOptions: { value: SaleStatus; label: string }[] = [
   { value: "pago", label: "Pago" },
   { value: "pendente", label: "Pendente" },
+  { value: "fiado", label: "Fiado" },
+];
+
+const expectedPaymentOptions: { value: ExpectedPaymentMethod; label: string }[] = [
+  { value: "pix", label: "Pix" },
+  { value: "dinheiro", label: "Dinheiro" },
+  { value: "cartao", label: "Cartão" },
+  { value: "salario", label: "Salário / próximo pagamento" },
+  { value: "outro", label: "Outro" },
 ];
 
 const saleFilters: { value: SaleFilter; label: string }[] = [
@@ -120,6 +147,10 @@ const initialSaleForm: SaleForm = {
   paymentMethod: "pix",
   status: "pago",
   notes: "",
+  customerPhone: "",
+  expectedPaymentDate: "",
+  expectedPaymentMethod: "pix",
+  collectionNote: "",
 };
 
 const initialInventoryForm: InventoryForm = {
@@ -210,7 +241,13 @@ function normalizePaymentMethod(value: unknown): PaymentMethod {
 }
 
 function normalizeStatus(value: unknown): SaleStatus {
-  return value === "pendente" ? "pendente" : "pago";
+  return value === "pendente" || value === "fiado" ? value : "pago";
+}
+
+function normalizeExpectedPaymentMethod(value: unknown): ExpectedPaymentMethod | undefined {
+  return value === "pix" || value === "dinheiro" || value === "cartao" || value === "salario" || value === "outro"
+    ? value
+    : undefined;
 }
 
 function lineLabel(lineType: LineType) {
@@ -309,6 +346,10 @@ function normalizeSale(value: unknown): Sale | null {
     notes: typeof value.notes === "string" ? value.notes : "",
     createdAt,
     paidAt,
+    customerPhone: typeof value.customerPhone === "string" ? value.customerPhone : undefined,
+    expectedPaymentDate: typeof value.expectedPaymentDate === "string" ? value.expectedPaymentDate : undefined,
+    expectedPaymentMethod: normalizeExpectedPaymentMethod(value.expectedPaymentMethod),
+    collectionNote: typeof value.collectionNote === "string" ? value.collectionNote : undefined,
   };
 }
 
@@ -585,7 +626,7 @@ export default function AdminPage() {
     }
 
     if (filter === "pendentes") {
-      return sales.filter((sale) => sale.status === "pendente");
+      return sales.filter((sale) => sale.status !== "pago");
     }
 
     return sales;
@@ -604,6 +645,35 @@ export default function AdminPage() {
       sortedInventory.filter((item) => item.stockQuantity <= item.minimumStock),
     [sortedInventory]
   );
+
+  const receivables = useMemo(() => {
+    const today = toLocalDateInput();
+    const dateInSevenDays = new Date();
+    dateInSevenDays.setDate(dateInSevenDays.getDate() + 7);
+    const sevenDaysAhead = toLocalDateInput(dateInSevenDays);
+    const currentMonth = today.slice(0, 7);
+    const pending = sales.filter((sale) => sale.status !== "pago");
+    const groups = {
+      atrasados: pending.filter((sale) => sale.expectedPaymentDate && sale.expectedPaymentDate < today),
+      hoje: pending.filter((sale) => sale.expectedPaymentDate === today),
+      proximos: pending.filter((sale) => sale.expectedPaymentDate && sale.expectedPaymentDate > today && sale.expectedPaymentDate <= sevenDaysAhead),
+      pagamento: pending.filter((sale) => sale.expectedPaymentDate && sale.expectedPaymentDate > sevenDaysAhead),
+      semData: pending.filter((sale) => !sale.expectedPaymentDate),
+      recebidos: sales.filter((sale) => sale.status === "pago"),
+    };
+    const total = (items: Sale[]) => items.reduce((sum, sale) => sum + sale.unitPrice * sale.quantity, 0);
+    return {
+      groups,
+      summary: {
+        totalPending: total(pending),
+        today: total(groups.hoje),
+        nextSevenDays: total(groups.proximos),
+        overdue: total(groups.atrasados),
+        receivedThisMonth: total(groups.recebidos.filter((sale) => sale.paidAt?.slice(0, 7) === currentMonth)),
+        pendingCustomers: new Set(pending.map((sale) => sale.customerName.toLocaleLowerCase("pt-BR"))).size,
+      },
+    };
+  }, [sales]);
 
   useEffect(() => {
     setSales(readSalesFromStorage());
@@ -724,7 +794,7 @@ export default function AdminPage() {
     setSaleForm((current) => ({
       ...current,
       paymentMethod,
-      status: paymentMethod === "fiado" ? "pendente" : current.status,
+      status: paymentMethod === "fiado" ? "fiado" : current.status,
     }));
   }
 
@@ -766,6 +836,10 @@ export default function AdminPage() {
       notes: saleForm.notes.trim(),
       createdAt: now,
       paidAt: saleForm.status === "pago" ? now : undefined,
+      customerPhone: saleForm.customerPhone.trim() || undefined,
+      expectedPaymentDate: saleForm.expectedPaymentDate || undefined,
+      expectedPaymentMethod: saleForm.expectedPaymentMethod,
+      collectionNote: saleForm.collectionNote.trim() || undefined,
     };
 
     setSales((currentSales) => [sale, ...currentSales]);
@@ -865,6 +939,39 @@ export default function AdminPage() {
     );
   }
 
+  function editExpectedPaymentDate(sale: Sale) {
+    const value = window.prompt(
+      "Nova data prevista (AAAA-MM-DD). Deixe vazio para remover:",
+      sale.expectedPaymentDate ?? ""
+    );
+    if (value === null) return;
+    if (value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      window.alert("Use uma data válida no formato AAAA-MM-DD.");
+      return;
+    }
+    setSales((current) => current.map((item) =>
+      item.id === sale.id ? { ...item, expectedPaymentDate: value || undefined } : item
+    ));
+  }
+
+  async function openCollectionMessage(sale: Sale) {
+    if (sale.customerPhone) {
+      window.open(createWhatsAppCollectionUrl(sale), "_blank", "noopener,noreferrer");
+      return;
+    }
+    await copyTextToClipboard(createCollectionMessage(sale));
+    window.alert("Mensagem copiada. Cadastre um telefone para abrir o WhatsApp diretamente.");
+  }
+
+  function openGoogleCalendar(sale: Sale) {
+    const url = createGoogleCalendarUrl(sale);
+    if (!url) {
+      window.alert("Defina uma data prevista antes de adicionar ao Google Agenda.");
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
   function deleteSale(saleId: string) {
     const confirmed = window.confirm("Excluir esta venda?");
 
@@ -893,6 +1000,10 @@ export default function AdminPage() {
         "Data",
         "Pago em",
         "Observação",
+        "Telefone do cliente",
+        "Data prevista de recebimento",
+        "Forma prevista",
+        "Observação de cobrança",
       ],
       ...sales.map((sale) => [
         sale.id,
@@ -911,6 +1022,10 @@ export default function AdminPage() {
         sale.createdAt,
         sale.paidAt ?? "",
         sale.notes,
+        sale.customerPhone ?? "",
+        sale.expectedPaymentDate ?? "",
+        expectedPaymentMethodLabel(sale.expectedPaymentMethod),
+        sale.collectionNote ?? "",
       ]),
     ];
 
@@ -1417,6 +1532,7 @@ export default function AdminPage() {
         <nav className="flex flex-wrap gap-2 rounded-lg border border-gold/20 bg-white/[0.035] p-2">
           {[
             ["#vendas", "Vendas"],
+            ["#agenda-recebimentos", "Agenda de recebimentos"],
             ["#estoque-e-custos", "Estoque e custos"],
             ["#relatorios", "Relatórios"],
             ["#backup", "Backup"],
@@ -1431,6 +1547,80 @@ export default function AdminPage() {
             </a>
           ))}
         </nav>
+
+        <section id="agenda-recebimentos" className="scroll-mt-28 rounded-xl border border-gold/25 bg-white/[0.04] p-5 sm:p-7">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.26em] text-gold">Controle de cobranças</p>
+            <h2 className="mt-2 text-3xl font-semibold text-white">Agenda de Recebimentos</h2>
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-stone-400">Acompanhe pagamentos, atrasos e próximos recebimentos sem sair do painel.</p>
+          </div>
+
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+            {[
+              ["Total a receber", formatCurrency(receivables.summary.totalPending)],
+              ["Recebimentos de hoje", formatCurrency(receivables.summary.today)],
+              ["Próximos 7 dias", formatCurrency(receivables.summary.nextSevenDays)],
+              ["Atrasados", formatCurrency(receivables.summary.overdue)],
+              ["Recebidos no mês", formatCurrency(receivables.summary.receivedThisMonth)],
+              ["Clientes pendentes", String(receivables.summary.pendingCustomers)],
+            ].map(([label, value]) => (
+              <article key={label} className="rounded-lg border border-gold/15 bg-black/45 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-stone-500">{label}</p>
+                <p className="mt-3 text-xl font-semibold text-gold-light">{value}</p>
+              </article>
+            ))}
+          </div>
+
+          <div className="mt-8 grid gap-7">
+            {([
+              ["Atrasados", receivables.groups.atrasados, "text-red-300"],
+              ["Hoje", receivables.groups.hoje, "text-gold-light"],
+              ["Próximos 7 dias", receivables.groups.proximos, "text-gold-light"],
+              ["Próximo pagamento", receivables.groups.pagamento, "text-stone-200"],
+              ["Sem data definida", receivables.groups.semData, "text-stone-300"],
+              ["Recebidos", receivables.groups.recebidos, "text-emerald-300"],
+            ] as [string, Sale[], string][]).map(([title, items, titleClass]) => (
+              <div key={title}>
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className={`text-xl font-semibold ${titleClass}`}>{title}</h3>
+                  <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-stone-400">{items.length}</span>
+                </div>
+                {items.length === 0 ? (
+                  <p className="mt-3 rounded-lg border border-dashed border-white/10 p-5 text-sm text-stone-500">Nenhum recebimento neste grupo.</p>
+                ) : (
+                  <div className="mt-3 grid gap-4 lg:grid-cols-2">
+                    {items.map((sale) => (
+                      <article key={`${title}-${sale.id}`} className="rounded-xl border border-white/10 bg-black/55 p-5">
+                        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                          <div>
+                            <p className="text-lg font-semibold text-white">{sale.customerName}</p>
+                            <p className="mt-1 text-sm text-stone-400">{sale.perfumeName} · {sale.quantity} un.</p>
+                          </div>
+                          <span className={`w-fit rounded-md border px-2.5 py-1 text-xs font-bold uppercase tracking-[0.12em] ${sale.status === "pago" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300" : sale.status === "fiado" ? "border-orange-400/30 bg-orange-400/10 text-orange-200" : "border-gold/30 bg-gold/10 text-gold-light"}`}>
+                            {sale.status}
+                          </span>
+                        </div>
+                        <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                          <div><p className="text-xs text-stone-500">{sale.status === "pago" ? "Valor total" : "Valor pendente"}</p><p className="mt-1 font-semibold text-gold-light">{formatCurrency(sale.unitPrice * sale.quantity)}</p></div>
+                          <div><p className="text-xs text-stone-500">Data prevista</p><p className="mt-1 text-stone-200">{formatReceivableDate(sale.expectedPaymentDate)}</p></div>
+                          <div><p className="text-xs text-stone-500">Forma prevista</p><p className="mt-1 text-stone-200">{expectedPaymentMethodLabel(sale.expectedPaymentMethod)}</p></div>
+                          <div><p className="text-xs text-stone-500">Telefone</p><p className="mt-1 text-stone-200">{sale.customerPhone || "Não informado"}</p></div>
+                        </div>
+                        {sale.collectionNote || sale.notes ? <p className="mt-4 rounded-md bg-white/[0.04] p-3 text-sm leading-6 text-stone-400">{sale.collectionNote || sale.notes}</p> : null}
+                        <div className="mt-5 grid grid-cols-2 gap-2">
+                          <button type="button" disabled={sale.status === "pago"} onClick={() => markAsPaid(sale.id)} className="min-h-11 rounded-md border border-emerald-400/30 px-3 text-xs font-semibold text-emerald-300 disabled:opacity-40">Marcar como recebido</button>
+                          <button type="button" onClick={() => editExpectedPaymentDate(sale)} className="min-h-11 rounded-md border border-gold/30 px-3 text-xs font-semibold text-gold-light">Editar data</button>
+                          <button type="button" onClick={() => void openCollectionMessage(sale)} className="min-h-11 rounded-md border border-emerald-400/30 px-3 text-xs font-semibold text-emerald-300">Mensagem WhatsApp</button>
+                          <button type="button" onClick={() => openGoogleCalendar(sale)} className="min-h-11 rounded-md border border-white/15 px-3 text-xs font-semibold text-stone-300">Adicionar ao Google Agenda</button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
 
         <section id="relatorios" className="scroll-mt-28">
           <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
@@ -1856,6 +2046,19 @@ export default function AdminPage() {
 
               <label>
                 <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                  Telefone do cliente (opcional)
+                </span>
+                <input
+                  type="tel"
+                  value={saleForm.customerPhone}
+                  onChange={(event) => setSaleForm((current) => ({ ...current, customerPhone: event.target.value }))}
+                  placeholder="5592999999999"
+                  className="mt-2 w-full rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-white outline-none transition focus:border-gold"
+                />
+              </label>
+
+              <label>
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
                   Perfume vendido
                 </span>
                 <select
@@ -2004,6 +2207,51 @@ export default function AdminPage() {
                 </select>
               </label>
 
+              <div className="rounded-lg border border-gold/20 bg-black/35 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gold">
+                  Planejamento do recebimento
+                </p>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <label>
+                    <span className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Data prevista</span>
+                    <input
+                      type="date"
+                      value={saleForm.expectedPaymentDate}
+                      onChange={(event) => setSaleForm((current) => ({ ...current, expectedPaymentDate: event.target.value }))}
+                      className="mt-2 w-full rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-white outline-none focus:border-gold"
+                    />
+                  </label>
+                  <label>
+                    <span className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Forma prevista</span>
+                    <select
+                      value={saleForm.expectedPaymentMethod}
+                      onChange={(event) => setSaleForm((current) => ({ ...current, expectedPaymentMethod: event.target.value as ExpectedPaymentMethod }))}
+                      className="mt-2 w-full rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-white outline-none focus:border-gold"
+                    >
+                      {expectedPaymentOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                  {[
+                    ["Hoje", toLocalDateInput()],
+                    ["Dia 5 — próximo pagamento", nextDayOfMonth(5)],
+                    ["Dia 15", nextDayOfMonth(15)],
+                  ].map(([label, value]) => (
+                    <button key={label} type="button" onClick={() => setSaleForm((current) => ({ ...current, expectedPaymentDate: value, expectedPaymentMethod: label.includes("pagamento") ? "salario" : current.expectedPaymentMethod }))} className="min-h-11 rounded-md border border-gold/30 px-3 text-xs font-semibold text-gold-light transition hover:border-gold">
+                      {label}
+                    </button>
+                  ))}
+                  <button type="button" onClick={() => document.querySelector<HTMLInputElement>('input[type="date"]')?.showPicker?.()} className="min-h-11 rounded-md border border-white/15 px-3 text-xs font-semibold text-stone-300">
+                    Escolher data manualmente
+                  </button>
+                </div>
+                <label className="mt-4 block">
+                  <span className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Observação de cobrança</span>
+                  <textarea rows={3} value={saleForm.collectionNote} onChange={(event) => setSaleForm((current) => ({ ...current, collectionNote: event.target.value }))} className="mt-2 w-full resize-none rounded-md border border-gold/20 bg-black px-4 py-3 text-sm text-white outline-none focus:border-gold" />
+                </label>
+              </div>
+
               <label>
                 <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
                   Observação
@@ -2144,7 +2392,7 @@ export default function AdminPage() {
                                   : "border-gold/35 bg-gold/10 text-gold-light"
                               }`}
                             >
-                              {sale.status === "pago" ? "Pago" : "Pendente"}
+                              {statusOptions.find((option) => option.value === sale.status)?.label ?? sale.status}
                             </span>
                           </td>
                           <td className="py-4 pr-4 text-stone-400">
