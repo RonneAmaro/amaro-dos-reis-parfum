@@ -19,6 +19,30 @@ npm.cmd run dev -- -p 3001
 
 Abra `http://localhost:3001` no navegador.
 
+## Instalar no celular (PWA)
+
+O site pode ser instalado como aplicativo. No Android, abra no Chrome, toque
+nos tres pontos e escolha `Instalar app` ou `Adicionar a tela inicial`. No
+iPhone, abra no Safari, toque em Compartilhar e escolha `Adicionar a Tela de
+Inicio`. A pagina `/instalar` tambem apresenta essas orientacoes.
+
+## Protecao do painel administrativo
+
+O acesso a `/admin` e suas subpaginas exige uma sessao assinada em cookie
+`httpOnly`. Configure as variaveis abaixo apenas no ambiente local ou na
+plataforma de hospedagem:
+
+```bash
+AMARO_ADMIN_PASSWORD=
+AMARO_ADMIN_SESSION_SECRET=
+```
+
+Use uma senha exclusiva para `AMARO_ADMIN_PASSWORD` e um segredo longo e
+aleatorio (recomendado: pelo menos 32 caracteres) para
+`AMARO_ADMIN_SESSION_SECRET`. Nenhum desses valores deve usar o prefixo
+`NEXT_PUBLIC_` ou ser commitado. O login fica em `/admin/login` e o botao
+`Sair do painel` encerra a sessao.
+
 ## Variaveis opcionais
 
 Configure o numero publico do WhatsApp quando quiser habilitar os botoes:

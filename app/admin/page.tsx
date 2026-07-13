@@ -1368,6 +1368,14 @@ export default function AdminPage() {
           </div>
           <div className="grid gap-3">
             <div className="flex flex-wrap gap-3">
+              <form action="/api/admin/logout" method="post">
+                <button
+                  type="submit"
+                  className="min-h-11 rounded-md border border-white/20 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-stone-300 transition hover:border-gold/45 hover:text-gold-light"
+                >
+                  Sair do painel
+                </button>
+              </form>
               <button
                 type="button"
                 onClick={exportSalesCsv}

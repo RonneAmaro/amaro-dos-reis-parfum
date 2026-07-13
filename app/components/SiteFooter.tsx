@@ -47,6 +47,9 @@ export default function SiteFooter() {
           <Link href="/contato" className="transition hover:text-gold-light">
             Contato
           </Link>
+          <Link href="/instalar" className="transition hover:text-gold-light">
+            Instalar app
+          </Link>
           <a
             href={whatsappHref}
             target="_blank"

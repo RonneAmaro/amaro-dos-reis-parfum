@@ -1,7 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import SiteFooter from "./components/SiteFooter";
 import SiteHeader from "./components/SiteHeader";
+import ServiceWorkerRegistration from "./components/ServiceWorkerRegistration";
 import "./globals.css";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3001";
@@ -22,6 +23,13 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: "AMAROdosREIS Parfum",
   description: siteDescription,
+  manifest: "/manifest.webmanifest",
+  applicationName: "Amaro Parfum",
+  appleWebApp: {
+    capable: true,
+    title: "Amaro Parfum",
+    statusBarStyle: "black-translucent",
+  },
   openGraph: {
     title: "AMAROdosREIS Parfum",
     description: siteDescription,
@@ -57,8 +65,12 @@ export const metadata: Metadata = {
       },
     ],
     shortcut: "/favicon-amaro.ico",
-    apple: "/favicon-amaro.png",
+    apple: "/apple-touch-icon.png",
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#c89b3c",
 };
 
 export default function RootLayout({
@@ -72,6 +84,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full bg-background text-foreground">
+        <ServiceWorkerRegistration />
         <SiteHeader />
         {children}
         <SiteFooter />
