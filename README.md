@@ -279,6 +279,59 @@ Veja as orientacoes em [`docs/fotos-perfumes.md`](docs/fotos-perfumes.md).
    `NEXT_PUBLIC_WHATSAPP_NUMBER` nas variaveis de ambiente da Vercel.
 7. Nunca suba `.env.local` para o GitHub.
 
+## Heartbeat diario do Supabase
+
+O heartbeat faz uma consulta somente de leitura e sem retorno de linhas na
+tabela `public.perfumes`. Isso gera atividade legitima e leve no Supabase, sem
+criar ou alterar vendas, estoque ou qualquer outro dado. A rota server-side e:
+
+```text
+/api/cron/supabase-heartbeat
+```
+
+O arquivo `vercel.json` agenda uma chamada diaria para `09:00 UTC` (05:00 em
+Rondonia, UTC-4). Em contas Hobby, a Vercel pode executar o cron dentro da hora
+agendada, sem precisao de minuto. Configure um segredo longo e aleatorio tanto
+no ambiente local usado para teste quanto em `Settings > Environment Variables`
+do projeto na Vercel:
+
+```bash
+CRON_SECRET=uma_chave_grande_secreta
+```
+
+Nao use o prefixo `NEXT_PUBLIC_`. O segredo nao deve ir para o navegador, banco
+ou GitHub. Na Vercel, quando `CRON_SECRET` esta configurado, o Cron envia
+automaticamente `Authorization: Bearer <CRON_SECRET>` para a rota. A rota
+recusa chamadas quando o segredo estiver ausente ou o header estiver incorreto.
+
+Para testar localmente no PowerShell, configure temporariamente a variavel na
+sessao do terminal e inicie o Next.js:
+
+```powershell
+$env:CRON_SECRET="minha-chave"
+npm.cmd run dev -- -p 3001
+```
+
+Em outro terminal PowerShell, faca a chamada autenticada:
+
+```powershell
+$headers = @{ Authorization = "Bearer minha-chave" }
+Invoke-RestMethod -Uri "http://localhost:3001/api/cron/supabase-heartbeat" -Headers $headers
+```
+
+O ambiente local tambem precisa de `NEXT_PUBLIC_SUPABASE_URL` e
+`SUPABASE_SERVICE_ROLE_KEY`, ja usadas pelo client server-side existente. Para
+testar depois do deploy, substitua a URL local pela URL de producao:
+
+```powershell
+$headers = @{ Authorization = "Bearer sua-chave-da-vercel" }
+Invoke-RestMethod -Uri "https://seu-dominio.vercel.app/api/cron/supabase-heartbeat" -Headers $headers
+```
+
+Uma resposta bem-sucedida contem `ok: true`, o servico, o horario da checagem e
+uma contagem resumida. Segredos nunca sao incluidos na resposta. Depois do
+deploy, o agendamento pode ser acompanhado em `Settings > Cron Jobs` na Vercel.
+
 ## Publicação na Vercel
 
 1. Importe o repositorio no Vercel.
