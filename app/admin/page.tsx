@@ -36,6 +36,7 @@ import {
   type AdminAssistantPreview,
 } from "@/lib/admin/adminAssistant";
 import { AdminIcon, AdminQuickActions, AdminSummaryCards, type SummaryCard } from "./AdminDashboardVisuals";
+import OrderDraftBox from "./OrderDraftBox";
 
 const INVENTORY_STORAGE_KEY = "amaro_inventory_v1";
 const BACKUP_VERSION = "amaro_backup_v1";
@@ -966,6 +967,13 @@ export default function AdminPage() {
     setAdminAssistantSaleId(result.preview.action?.saleId ?? "");
     setAdminAssistantSyncGoogle(result.preview.intent !== "registrar_vendas_lote");
     setAdminAssistantResult("");
+  }
+
+  function sendOrderDraftToAssistant(text: string) {
+    setAdminAssistantText(text);
+    setAdminAssistantPreview(null);
+    setAdminAssistantResult("Rascunho carregado. Revise o texto e clique em Interpretar.");
+    window.requestAnimationFrame(() => document.getElementById("assistente-administrativo")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
 
   function startAdminAssistantVoice() {
@@ -1987,6 +1995,8 @@ export default function AdminPage() {
           <div className="mb-3 flex items-center justify-between"><h2 id="acoes-rapidas-title" className="text-sm font-semibold text-white">Ações rápidas</h2><span className="text-xs text-stone-500">Toque para navegar</span></div>
           <AdminQuickActions />
         </section>
+
+        <OrderDraftBox onSendToAssistant={sendOrderDraftToAssistant} />
 
         <AdminSummaryCards cards={dashboardCards} />
 

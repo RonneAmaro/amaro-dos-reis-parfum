@@ -27,12 +27,12 @@ export function AdminIcon({ name, className = "h-5 w-5" }: { name: AdminIconName
 
 export function AdminQuickActions() {
   const actions: Array<[string, string, AdminIconName]> = [
-    ["#vendas", "Nova venda", "sale"], ["#assistente-administrativo", "Assistente", "assistant"],
+    ["#caixa-rapida", "Caixa rápida", "sale"], ["#vendas", "Nova venda", "sale"], ["#assistente-administrativo", "Assistente", "assistant"],
     ["#estoque-e-custos", "Estoque", "stock"], ["#agenda-recebimentos", "Recebimentos", "calendar"],
     ["#google-agenda", "Google Agenda", "google"], ["#backup", "Backup", "backup"],
     ["#sync", "Sincronização", "sync"], ["#relatorios", "Relatórios", "report"],
   ];
-  return <nav aria-label="Ações rápidas" className="flex snap-x gap-2 overflow-x-auto pb-2 sm:grid sm:grid-cols-4 sm:overflow-visible xl:grid-cols-8">
+  return <nav aria-label="Ações rápidas" className="flex snap-x gap-2 overflow-x-auto pb-2 sm:grid sm:grid-cols-4 sm:overflow-visible xl:grid-cols-9">
     {actions.map(([href, label, icon]) => <a key={href} href={href}
       className="group flex min-h-24 min-w-32 snap-start flex-col justify-between rounded-2xl border border-white/10 bg-white/[0.045] p-3 text-left transition hover:-translate-y-0.5 hover:border-gold/45 hover:bg-gold/10 focus-visible:outline-2 focus-visible:outline-gold sm:min-w-0">
       <span className="grid h-9 w-9 place-items-center rounded-xl bg-gold/10 text-gold-light transition group-hover:bg-gold group-hover:text-black"><AdminIcon name={icon}/></span>
