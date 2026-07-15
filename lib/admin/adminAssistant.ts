@@ -167,10 +167,14 @@ const perfumeAliases: Array<{ canonical: string; aliases: string[] }> = [
   { canonical: "Silverion Black", aliases: ["silverion black", "silver black", "azzaro silver black"] },
   { canonical: "Scarlet Noir", aliases: ["scarlet noir", "scarle noir", "scarlat noir", "scandalo", "scandal", "scandal pour homme", "escandalo"] },
   { canonical: "Sultan Noir", aliases: ["sultan noir", "sultan"] },
-  { canonical: "Samarah Rose", aliases: ["samarah rose", "samarah"] },
+  { canonical: "Sultan Noir", aliases: ["asad", "lattafa asad"] },
+  { canonical: "Samarah Rose", aliases: ["samarah rose", "samarah", "sabah al ward"] },
   { canonical: "Belle Venom", aliases: ["belle venom", "good girl"] },
   { canonical: "Moon Candy", aliases: ["moon candy", "fantasy"] },
-  { canonical: "Lumiara", aliases: ["lumiara", "la nuit tresor"] },
+  { canonical: "Lumiara", aliases: ["lumiara", "la nuit tresor", "la nuit"] },
+  { canonical: "Dominare", aliases: ["dominare", "aventus creed", "aventus", "creed"] },
+  { canonical: "Ignis", aliases: ["ignis", "fahrenheit"] },
+  { canonical: "Floréa", aliases: ["florea", "chloe"] },
 ];
 
 function dateInput(day: number, month: number, year = new Date().getFullYear()) {
@@ -189,12 +193,13 @@ function explicitDate(fragment: string) {
   return named ? dateInput(Number(named[1]), monthNumbers[named[2]]) : undefined;
 }
 
-function findBatchPerfume(segment: string, perfumes: AdminAssistantPerfume[]) {
+export function resolveAdminAssistantPerfumeReference(segment: string, perfumes: AdminAssistantPerfume[]) {
   const candidates = perfumeAliases.flatMap((entry) => entry.aliases.map((alias) => ({ ...entry, alias })))
     .sort((a, b) => b.alias.length - a.alias.length);
-  for (const candidate of candidates) {
-    const index = segment.indexOf(candidate.alias);
-    if (index < 0) continue;
+  const found = candidates.map((candidate) => ({ candidate, index: segment.indexOf(candidate.alias) }))
+    .filter((match) => match.index >= 0)
+    .sort((a, b) => a.index - b.index || b.candidate.alias.length - a.candidate.alias.length);
+  for (const { candidate, index } of found) {
     const perfume = perfumes.find((item) => normalizeAdminText(item.name) === normalizeAdminText(candidate.canonical));
     if (perfume) return { perfume, alias: candidate.alias, index, legacy: candidate.alias !== normalizeAdminText(candidate.canonical) };
   }
@@ -235,7 +240,7 @@ function parseBatchSales(source: string, perfumes: AdminAssistantPerfume[]) {
   const batch: AdminAssistantBatchSale[] = [];
   let inheritedSaleDate: string | undefined;
   for (const chunk of chunks) {
-    const perfumeMatch = findBatchPerfume(chunk, perfumes);
+    const perfumeMatch = resolveAdminAssistantPerfumeReference(chunk, perfumes);
     if (!perfumeMatch) continue;
     const customer = batchCustomer(chunk, perfumeMatch.index, perfumeMatch.alias);
     if (!customer) continue;
