@@ -37,6 +37,7 @@ import {
 } from "@/lib/admin/adminAssistant";
 import { AdminIcon, AdminQuickActions, AdminSummaryCards, type SummaryCard } from "./AdminDashboardVisuals";
 import OrderDraftBox from "./OrderDraftBox";
+import type { OrderDraftConversionResult } from "@/lib/admin/orderDraftConverter";
 
 const INVENTORY_STORAGE_KEY = "amaro_inventory_v1";
 const BACKUP_VERSION = "amaro_backup_v1";
@@ -974,6 +975,53 @@ export default function AdminPage() {
     setAdminAssistantPreview(null);
     setAdminAssistantResult("Rascunho carregado. Revise o texto e clique em Interpretar.");
     window.requestAnimationFrame(() => document.getElementById("assistente-administrativo")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
+
+  async function confirmOrderDraftConversion(draftId: string, conversion: OrderDraftConversionResult) {
+    if (!conversion.ok || !conversion.sales.length) return { ok: false, message: "Nenhuma venda válida foi encontrada para criar." };
+    if (conversion.sales.some((sale) => !sale.customerName.trim() || sale.customerName === "Cliente não identificado" || sale.totalAmount <= 0)) {
+      return { ok: false, message: "Revise cliente e valor de todas as vendas antes de confirmar." };
+    }
+    const requested = new Map<string, number>();
+    for (const sale of conversion.sales) for (const item of sale.items) requested.set(item.perfumeSlug, (requested.get(item.perfumeSlug) ?? 0) + item.quantity);
+    const insufficient = [...requested].find(([slug, quantity]) => (inventory.find((item) => item.perfumeSlug === slug)?.stockQuantity ?? 0) < quantity);
+    if (insufficient) {
+      const perfume = conversion.sales.flatMap((sale) => sale.items).find((item) => item.perfumeSlug === insufficient[0]);
+      return { ok: false, message: `Estoque insuficiente para ${perfume?.perfumeName ?? "um dos perfumes"}. Nenhuma venda foi criada.` };
+    }
+    const createdSales: Sale[] = conversion.sales.map((converted) => {
+      const items = converted.items.map((convertedItem) => {
+        const perfume = perfumeCommerce.find((item) => perfumeSlug(item) === convertedItem.perfumeSlug)!;
+        const stored = inventory.find((item) => item.perfumeSlug === convertedItem.perfumeSlug)!;
+        const lineType = stored?.lineType ?? getSuggestedLineType(perfume);
+        return createFlexibleItem({ id: createId(), perfumeSlug: convertedItem.perfumeSlug, perfumeName: convertedItem.perfumeName,
+          lineType, quantity: convertedItem.quantity, unitPrice: convertedItem.unitPrice, originalUnitPrice: convertedItem.unitPrice,
+          unitCost: stored?.unitCost ?? getDefaultUnitCost(lineType), discountValue: 0, itemType: "sale" });
+      });
+      const first = items[0];
+      const firstConverted = converted.items[0];
+      const firstPerfume = perfumeCommerce.find((item) => perfumeSlug(item) === firstConverted.perfumeSlug)!;
+      const firstStored = inventory.find((item) => item.perfumeSlug === firstConverted.perfumeSlug);
+      const topLineType: LineType = firstStored?.lineType ?? getSuggestedLineType(firstPerfume);
+      const estimatedCost = items.reduce((sum, item) => sum + item.unitCost * item.quantity, 0);
+      const status: SaleStatus = converted.paymentStatus === "pago" ? "pago" : converted.paymentStatus === "partial" ? "partial" : "pendente";
+      return { id: createId(), customerName: converted.customerName.trim(), perfumeSlug: firstConverted.perfumeSlug, perfumeName: first.perfumeName,
+        lineType: topLineType, unitPrice: first.unitPrice, unitCost: first.unitCost, estimatedProfit: converted.totalAmount - estimatedCost,
+        quantity: items.reduce((sum, item) => sum + item.quantity, 0), paymentMethod: converted.paymentMethod,
+        status, notes: [converted.customerNote, `Convertido do rascunho ${draftId}`].filter(Boolean).join(" · "),
+        collectionNote: converted.collectionNote, createdAt: `${converted.saleDate}T12:00:00.000Z`,
+        paidAt: converted.amountPaid > 0 ? converted.paidAt ?? `${converted.saleDate}T12:00:00.000Z` : undefined,
+        expectedPaymentDate: status === "pago" ? undefined : converted.expectedPaymentDate,
+        expectedPaymentMethod: status === "pago" || converted.paymentMethod === "fiado" ? undefined : converted.paymentMethod,
+        items, subtotal: converted.subtotal, discountValue: converted.discountValue, totalAmount: converted.totalAmount,
+        amountPaid: converted.amountPaid, remainingAmount: converted.remainingAmount };
+    });
+    const now = new Date().toISOString();
+    setSales((current) => [...createdSales, ...current]);
+    setInventory((current) => current.map((item) => ({ ...item,
+      stockQuantity: item.stockQuantity - (requested.get(item.perfumeSlug) ?? 0),
+      updatedAt: requested.has(item.perfumeSlug) ? now : item.updatedAt })));
+    return { ok: true, message: `${createdSales.length} venda(s) criada(s). O rascunho foi marcado como resolvido.` };
   }
 
   function startAdminAssistantVoice() {
@@ -1996,7 +2044,9 @@ export default function AdminPage() {
           <AdminQuickActions />
         </section>
 
-        <OrderDraftBox onSendToAssistant={sendOrderDraftToAssistant} />
+        <OrderDraftBox onSendToAssistant={sendOrderDraftToAssistant}
+          perfumes={perfumeCommerce.map((perfume) => { const slug = perfumeSlug(perfume); const stored = inventory.find((item) => item.perfumeSlug === slug); const lineType = stored?.lineType ?? getSuggestedLineType(perfume); return { slug, name: perfume.name, defaultUnitPrice: stored?.salePrice ?? getLinePrice(lineType) }; })}
+          onConfirmConversion={confirmOrderDraftConversion} />
 
         <AdminSummaryCards cards={dashboardCards} />
 
