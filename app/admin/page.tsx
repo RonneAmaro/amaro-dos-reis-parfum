@@ -35,6 +35,7 @@ import {
   paymentUpdateForAction,
   type AdminAssistantPreview,
 } from "@/lib/admin/adminAssistant";
+import { AdminIcon, AdminQuickActions, AdminSummaryCards, type SummaryCard } from "./AdminDashboardVisuals";
 
 const INVENTORY_STORAGE_KEY = "amaro_inventory_v1";
 const BACKUP_VERSION = "amaro_backup_v1";
@@ -604,6 +605,10 @@ export default function AdminPage() {
   const [isAdminAssistantListening, setIsAdminAssistantListening] = useState(false);
   const [adminAssistantSyncGoogle, setAdminAssistantSyncGoogle] = useState(true);
   const adminRecognitionRef = useRef<{ stop(): void; abort(): void } | null>(null);
+  const adminVoiceTranscriptRef = useRef("");
+  const adminVoiceFinalTranscriptRef = useRef("");
+  const isAdminListeningManuallyRef = useRef(false);
+  const adminVoiceRestartTimerRef = useRef<number | null>(null);
   const [googleStatus, setGoogleStatus] = useState<GoogleCalendarStatus>({ connected: false });
   const [googleMessage, setGoogleMessage] = useState("");
   const [googleBusy, setGoogleBusy] = useState(false);
@@ -781,6 +786,12 @@ export default function AdminPage() {
       .catch(() => setGoogleMessage("Não foi possível consultar o Google Agenda."));
   }, []);
 
+  useEffect(() => () => {
+    isAdminListeningManuallyRef.current = false;
+    if (adminVoiceRestartTimerRef.current) window.clearTimeout(adminVoiceRestartTimerRef.current);
+    adminRecognitionRef.current?.abort();
+  }, []);
+
   useEffect(() => {
     setInventory(readInventoryFromStorage());
     setIsInventoryLoaded(true);
@@ -953,15 +964,15 @@ export default function AdminPage() {
     );
     setAdminAssistantPreview(result.preview);
     setAdminAssistantSaleId(result.preview.action?.saleId ?? "");
-    setAdminAssistantSyncGoogle(true);
+    setAdminAssistantSyncGoogle(result.preview.intent !== "registrar_vendas_lote");
     setAdminAssistantResult("");
   }
 
   function startAdminAssistantVoice() {
     type RecognitionInstance = {
-      lang: string; interimResults: boolean; start(): void; stop(): void; abort(): void;
-      onresult: ((event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void) | null;
-      onend: (() => void) | null; onerror: (() => void) | null;
+      lang: string; interimResults: boolean; continuous: boolean; start(): void; stop(): void; abort(): void;
+      onresult: ((event: { resultIndex: number; results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }> }) => void) | null;
+      onend: (() => void) | null; onerror: ((event: { error?: string }) => void) | null;
     };
     type RecognitionConstructor = new () => RecognitionInstance;
     const speechWindow = window as typeof window & {
@@ -975,30 +986,69 @@ export default function AdminPage() {
     }
     const recognition = new Recognition();
     recognition.lang = "pt-BR";
-    recognition.interimResults = false;
-    recognition.onresult = (event) => setAdminAssistantText(event.results[0][0].transcript);
-    recognition.onend = () => { setIsAdminAssistantListening(false); adminRecognitionRef.current = null; };
-    recognition.onerror = () => { setIsAdminAssistantListening(false); adminRecognitionRef.current = null; setAdminAssistantResult("Não foi possível reconhecer o comando. Tente novamente ou digite."); };
+    recognition.interimResults = true;
+    recognition.continuous = true;
+    recognition.onresult = (event) => {
+      let interim = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const text = event.results[index][0].transcript.trim();
+        if (event.results[index].isFinal) adminVoiceFinalTranscriptRef.current = `${adminVoiceFinalTranscriptRef.current} ${text}`.trim();
+        else interim = `${interim} ${text}`.trim();
+      }
+      const transcript = `${adminVoiceFinalTranscriptRef.current} ${interim}`.trim();
+      adminVoiceTranscriptRef.current = transcript;
+      setAdminAssistantText(transcript);
+    };
+    recognition.onend = () => {
+      if (isAdminListeningManuallyRef.current) {
+        adminVoiceFinalTranscriptRef.current = adminVoiceTranscriptRef.current;
+        adminVoiceRestartTimerRef.current = window.setTimeout(() => {
+          if (!isAdminListeningManuallyRef.current) return;
+          try { recognition.start(); } catch { /* o navegador ainda está encerrando a sessão anterior */ }
+        }, 250);
+        return;
+      }
+      setIsAdminAssistantListening(false);
+      adminRecognitionRef.current = null;
+    };
+    recognition.onerror = (event) => {
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        isAdminListeningManuallyRef.current = false;
+        setIsAdminAssistantListening(false);
+        adminRecognitionRef.current = null;
+        setAdminAssistantResult("Permissão de microfone bloqueada. Libere o acesso ou digite o comando.");
+      }
+    };
     adminRecognitionRef.current = recognition;
+    adminVoiceTranscriptRef.current = "";
+    adminVoiceFinalTranscriptRef.current = "";
+    isAdminListeningManuallyRef.current = true;
     setAdminAssistantResult("");
     setIsAdminAssistantListening(true);
     recognition.start();
   }
 
   function cancelAdminAssistantVoice() {
+    isAdminListeningManuallyRef.current = false;
+    if (adminVoiceRestartTimerRef.current) window.clearTimeout(adminVoiceRestartTimerRef.current);
     adminRecognitionRef.current?.abort();
     adminRecognitionRef.current = null;
     setIsAdminAssistantListening(false);
     setAdminAssistantText("");
+    adminVoiceTranscriptRef.current = "";
+    adminVoiceFinalTranscriptRef.current = "";
     setAdminAssistantPreview(null);
     setAdminAssistantResult("Comando de voz cancelado.");
   }
 
   function finishAdminAssistantVoice() {
+    isAdminListeningManuallyRef.current = false;
+    if (adminVoiceRestartTimerRef.current) window.clearTimeout(adminVoiceRestartTimerRef.current);
     adminRecognitionRef.current?.stop();
     adminRecognitionRef.current = null;
     setIsAdminAssistantListening(false);
-    window.setTimeout(() => interpretAdministrativeCommand(), 0);
+    const transcript = adminVoiceTranscriptRef.current || adminAssistantText;
+    window.setTimeout(() => interpretAdministrativeCommand(transcript), 0);
   }
 
   async function removeAssistantGoogleEvent(sale: Sale) {
@@ -1025,6 +1075,50 @@ export default function AdminPage() {
     if (!action) return;
     const saleId = action.saleId ?? adminAssistantSaleId;
 
+    if (action.type === "registrar_vendas_lote") {
+      const batch = action.batchSales ?? [];
+      if (!batch.length || batch.some((item) => !item.customerName || !item.perfumeSlug || item.unitPrice <= 0)) {
+        setAdminAssistantResult("O lote possui vendas incompletas. Corrija o comando antes de confirmar.");
+        return;
+      }
+      const requestedStock = batch.reduce((totals, item) => totals.set(item.perfumeSlug, (totals.get(item.perfumeSlug) ?? 0) + item.quantity), new Map<string, number>());
+      const insufficient = [...requestedStock].find(([slug, quantity]) => (inventory.find((item) => item.perfumeSlug === slug)?.stockQuantity ?? 0) < quantity);
+      if (insufficient) {
+        const perfume = batch.find((item) => item.perfumeSlug === insufficient[0]);
+        setAdminAssistantResult(`Estoque insuficiente para ${perfume?.perfumeName ?? "um dos perfumes"}. Nenhuma venda foi criada.`);
+        return;
+      }
+      const createdSales: Sale[] = batch.map((batchSale) => {
+        const perfume = perfumeCommerce.find((item) => perfumeSlug(item) === batchSale.perfumeSlug)!;
+        const stored = inventory.find((item) => item.perfumeSlug === batchSale.perfumeSlug)!;
+        const lineType = stored?.lineType ?? getSuggestedLineType(perfume);
+        const item = createFlexibleItem({ id: createId(), perfumeSlug: batchSale.perfumeSlug, perfumeName: batchSale.perfumeName,
+          lineType, quantity: batchSale.quantity, unitPrice: batchSale.unitPrice, originalUnitPrice: batchSale.unitPrice,
+          unitCost: stored?.unitCost ?? getDefaultUnitCost(lineType), discountValue: 0, itemType: "sale" });
+        const total = item.total;
+        const paid = batchSale.status === "pago";
+        return { id: createId(), customerName: batchSale.customerName, perfumeSlug: batchSale.perfumeSlug,
+          perfumeName: batchSale.perfumeName, lineType, unitPrice: batchSale.unitPrice, unitCost: item.unitCost,
+          estimatedProfit: total - item.unitCost * batchSale.quantity, quantity: batchSale.quantity,
+          paymentMethod: paid && (batchSale.paymentMethod === "pix" || batchSale.paymentMethod === "dinheiro" || batchSale.paymentMethod === "cartao") ? batchSale.paymentMethod : "fiado",
+          status: paid ? "pago" : "pendente", notes: [batchSale.identification, "Venda informada por comando do Assistente Administrativo"].filter(Boolean).join(" · "),
+          collectionNote: batchSale.identification, createdAt: `${batchSale.saleDate}T12:00:00.000Z`, paidAt: paid ? batchSale.paidAt : undefined,
+          expectedPaymentDate: paid ? undefined : batchSale.expectedPaymentDate, items: [item], subtotal: item.subtotal,
+          discountValue: 0, totalAmount: total, amountPaid: paid ? total : 0, remainingAmount: paid ? 0 : total };
+      });
+      const now = new Date().toISOString();
+      setSales((current) => [...createdSales, ...current]);
+      setInventory((current) => current.map((item) => ({ ...item,
+        stockQuantity: item.stockQuantity - (requestedStock.get(item.perfumeSlug) ?? 0),
+        updatedAt: requestedStock.has(item.perfumeSlug) ? now : item.updatedAt })));
+      setAdminAssistantResult(`${createdSales.length} venda(s) criada(s) com sucesso.`);
+      setAdminAssistantPreview(null);
+      if (adminAssistantSyncGoogle && googleStatus.connected) {
+        for (const sale of createdSales.filter((item) => item.status !== "pago" && item.expectedPaymentDate)) await syncSaleWithGoogle(sale);
+      }
+      return;
+    }
+
     if (action.candidateSaleIds?.length && !saleId) {
       setAdminAssistantResult("Escolha uma venda antes de confirmar.");
       return;
@@ -1038,6 +1132,10 @@ export default function AdminPage() {
       }
       const quantity = Math.max(1, action.quantity ?? 1);
       const stored = inventory.find((item) => item.perfumeSlug === action.perfumeSlug);
+      if (!stored || stored.stockQuantity < quantity) {
+        setAdminAssistantResult(`Estoque insuficiente para retirar ${quantity}x ${action.perfumeName}. Nenhum dado foi alterado.`);
+        return;
+      }
       const lineType = stored?.lineType ?? getSuggestedLineType(perfume);
       const now = new Date().toISOString();
       const item = createFlexibleItem({
@@ -1090,7 +1188,7 @@ export default function AdminPage() {
       const updated: Sale = {
         ...selected, status: update.status, amountPaid: update.amountPaid,
         remainingAmount: update.remainingAmount,
-        paidAt: update.status === "pago" ? paidAt : selected.paidAt,
+        paidAt,
         expectedPaymentDate: update.status === "pago" ? undefined : action.expectedPaymentDate ?? selected.expectedPaymentDate,
         paymentMethod: action.paymentMethod === "pix" || action.paymentMethod === "dinheiro" || action.paymentMethod === "cartao"
           ? action.paymentMethod : selected.paymentMethod,
@@ -1104,6 +1202,15 @@ export default function AdminPage() {
         if (update.status === "pago") await removeAssistantGoogleEvent(selected);
         else if (googleStatus.connected && updated.expectedPaymentDate) await syncSaleWithGoogle(updated);
       }
+      setAdminAssistantPreview(null);
+      return;
+    }
+
+    if (action.resolution === "remove_reminder") {
+      const updated: Sale = { ...selected, expectedPaymentDate: undefined };
+      setSales((current) => current.map((sale) => sale.id === selected.id ? updated : sale));
+      setAdminAssistantResult(`O lembrete de cobrança de ${selected.customerName} foi cancelado. A venda continua pendente.`);
+      if (adminAssistantSyncGoogle && selected.googleCalendarEventId) await removeAssistantGoogleEvent(selected);
       setAdminAssistantPreview(null);
       return;
     }
@@ -1787,43 +1894,56 @@ export default function AdminPage() {
     ["Perfumes vendidos", String(summary.perfumeCount)],
     ["Perfumes com baixo estoque", String(summary.lowStockCount)],
   ];
+  const totalForDate = (date: string) => sales
+    .filter((sale) => sale.status !== "pago" && sale.expectedPaymentDate === date)
+    .reduce((total, sale) => total + getRemainingAmount(sale), 0);
+  const dashboardCards: SummaryCard[] = [
+    { label: "Recebido", value: formatCurrency(summary.totalReceived), icon: "paid", tone: "emerald" },
+    { label: "Pendente", value: formatCurrency(summary.totalPending), icon: "pending", tone: "gold" },
+    { label: "Atrasado", value: formatCurrency(receivables.summary.overdue), icon: "overdue", tone: "red" },
+    { label: "Próximo dia 5", value: formatCurrency(totalForDate(nextDayOfMonth(5))), icon: "calendar", tone: "blue" },
+    { label: "Próximo dia 15", value: formatCurrency(totalForDate(nextDayOfMonth(15))), icon: "calendar", tone: "blue" },
+    { label: "Estoque total", value: String(inventory.reduce((total, item) => total + item.stockQuantity, 0)), icon: "stock", tone: "gold" },
+    { label: "Lucro estimado", value: formatCurrency(summary.estimatedProfit), icon: "profit", tone: "emerald" },
+  ];
+  const intentLabels: Record<string, string> = {
+    registrar_vendas_lote: "Vendas em lote",
+    registrar_pagamento: "Pagamento", consultar_pendencias: "Consulta", consultar_cobrancas_por_data: "Cobrança",
+    remarcar_cobranca: "Remarcação", cancelar_cobranca_ou_marcar_recebido: "Lembrete",
+    registrar_uso_pessoal: "Uso pessoal", registrar_brinde: "Brinde", ajuda: "Ajuda", desconhecido: "Revisar comando",
+  };
 
   return (
-    <main className="min-h-screen bg-black text-stone-100">
-      <section className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-5 py-8 sm:px-8 lg:px-12">
-        <div className="rounded-lg border border-gold/25 bg-gold/10 p-4 text-sm leading-6 text-gold-light">
-          Versão local: os dados ficam salvos apenas neste navegador.
-          Futuramente este painel será integrado ao Supabase.
+    <main className="min-h-screen scroll-smooth bg-[radial-gradient(circle_at_top,_rgba(196,154,68,0.10),_transparent_32rem)] text-stone-100">
+      <section className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-5 sm:px-8 sm:py-8 lg:px-12">
+        <div className="flex flex-wrap gap-2 text-xs">
+          <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-emerald-200">● Dados locais ativos</span>
+          <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-stone-400">Custos e lucros estimados</span>
+          <span className={`rounded-full border px-3 py-2 ${googleStatus.connected ? "border-blue-400/20 bg-blue-400/10 text-blue-200" : "border-white/10 bg-white/[0.04] text-stone-400"}`}>{googleStatus.connected ? "● Google conectado" : "Google desconectado"}</span>
         </div>
 
-        <div className="rounded-lg border border-white/10 bg-white/[0.035] p-4 text-sm leading-6 text-stone-300">
-          Os valores de custo e lucro são estimativas para controle interno.
-          Ajuste os custos conforme seus fornecedores reais.
-        </div>
-
-        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+        <header className="flex flex-col justify-between gap-5 rounded-3xl border border-gold/20 bg-gradient-to-br from-gold/10 via-white/[0.035] to-transparent p-5 sm:p-7 lg:flex-row lg:items-center">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-gold">
-              Painel interno
+              AMARO DOS REIS · Painel interno
             </p>
-            <h1 className="mt-3 text-3xl font-semibold text-white sm:text-4xl">
-              Controle de vendas, estoque e lucro
+            <h1 className="mt-3 text-3xl font-semibold text-white sm:text-5xl">
+              Seu centro de comando
             </h1>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-stone-400">
-              Registro local para vendas, fiados, pagamentos, custos e estoque
-              da Amaro dos Reis Parfum.
+            <p className="mt-3 max-w-2xl text-sm text-stone-400 sm:text-base">
+              Vendas, recebimentos e estoque em uma visão rápida.
             </p>
+            <a href="#assistente-administrativo" className="mt-5 inline-flex min-h-12 items-center gap-3 rounded-xl bg-gold px-5 text-sm font-bold text-black transition hover:bg-gold-light">
+              <AdminIcon name="assistant" /> Abrir Assistente Administrativo
+            </a>
           </div>
-          <div className="grid gap-3">
-            <div className="flex flex-wrap gap-3">
-              <form action="/api/admin/logout" method="post">
-                <button
-                  type="submit"
-                  className="min-h-11 rounded-md border border-white/20 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-stone-300 transition hover:border-gold/45 hover:text-gold-light"
-                >
-                  Sair do painel
-                </button>
-              </form>
+          <div className="grid gap-3 lg:justify-items-end">
+            <form action="/api/admin/logout" method="post">
+              <button type="submit" className="min-h-11 rounded-xl border border-white/20 px-5 text-xs font-semibold uppercase tracking-[0.16em] text-stone-300 transition hover:border-gold/45 hover:text-gold-light">Sair do painel</button>
+            </form>
+            <details className="group w-full rounded-xl border border-white/10 bg-black/30 p-3 lg:max-w-md">
+              <summary className="cursor-pointer list-none text-xs font-semibold text-stone-300">Dados, exportações e segurança <span className="float-right text-gold group-open:rotate-180">⌄</span></summary>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
               <button
                 type="button"
                 onClick={exportSalesCsv}
@@ -1855,39 +1975,27 @@ export default function AdminPage() {
               >
                 Limpar todas as vendas
               </button>
-            </div>
-            <p className="max-w-xl text-xs leading-5 text-stone-500">
+              </div>
+            </details>
+            <p className="max-w-xl text-xs leading-5 text-stone-500 lg:text-right">
               Antes de apagar informações, exporte um backup completo.
             </p>
           </div>
-        </div>
+        </header>
 
-        <nav className="flex flex-wrap gap-2 rounded-lg border border-gold/20 bg-white/[0.035] p-2">
-          {[
-            ["#vendas", "Vendas"],
-            ["#assistente-administrativo", "Assistente administrativo"],
-            ["#agenda-recebimentos", "Agenda de recebimentos"],
-            ["#estoque-e-custos", "Estoque e custos"],
-            ["#relatorios", "Relatórios"],
-            ["#backup", "Backup"],
-            ["#sync", "Sincronização"],
-          ].map(([href, label]) => (
-            <a
-              key={href}
-              href={href}
-              className="min-h-10 rounded-md border border-transparent px-4 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-stone-300 transition hover:border-gold/40 hover:text-gold-light"
-            >
-              {label}
-            </a>
-          ))}
-        </nav>
+        <section aria-labelledby="acoes-rapidas-title">
+          <div className="mb-3 flex items-center justify-between"><h2 id="acoes-rapidas-title" className="text-sm font-semibold text-white">Ações rápidas</h2><span className="text-xs text-stone-500">Toque para navegar</span></div>
+          <AdminQuickActions />
+        </section>
 
-        <section className="rounded-xl border border-blue-400/20 bg-gradient-to-br from-blue-500/10 to-black/50 p-5 sm:p-7">
+        <AdminSummaryCards cards={dashboardCards} />
+
+        <section id="google-agenda" className="scroll-mt-24 rounded-2xl border border-blue-400/20 bg-gradient-to-br from-blue-500/10 to-black/50 p-5 sm:p-7">
           <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.25em] text-blue-300">Lembretes no celular</p>
               <h2 className="mt-2 text-2xl font-semibold text-white">Google Agenda</h2>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-400">
+              <p className="mt-3 hidden max-w-2xl text-sm leading-6 text-stone-400 sm:block">
                 {googleStatus.connected ? `Conectado${googleStatus.connectedEmail ? ` como ${googleStatus.connectedEmail}` : ""}.` : "Nenhuma conta Google conectada."}
                 {" "}As notificações aparecerão no celular quando estiverem ativadas no aplicativo Google Agenda.
               </p>
@@ -1906,60 +2014,68 @@ export default function AdminPage() {
           {googleMessage ? <p className="mt-4 rounded-md border border-white/10 bg-black/40 p-3 text-sm text-stone-300">{googleMessage}</p> : null}
         </section>
 
-        <section id="assistente-administrativo" className="scroll-mt-28 rounded-xl border border-emerald-400/25 bg-gradient-to-br from-emerald-500/10 to-black/50 p-5 sm:p-7">
-          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-300">Texto ou voz, processamento local</p>
-          <h2 className="mt-2 text-3xl font-semibold text-white">Assistente Administrativo</h2>
-          <p className="mt-3 max-w-3xl text-sm leading-7 text-stone-400">
-            Consulte cobranças ou descreva uma alteração. O assistente usa regras locais e sempre mostra uma prévia antes de modificar vendas ou estoque.
-          </p>
+        <section id="assistente-administrativo" className="relative scroll-mt-24 overflow-hidden rounded-3xl border border-emerald-400/25 bg-gradient-to-br from-emerald-400/[0.14] via-white/[0.035] to-black p-5 shadow-2xl shadow-emerald-950/30 sm:p-8">
+          <div className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-emerald-400/10 blur-3xl" />
+          <div className="relative flex items-start gap-4">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-emerald-300 text-black"><AdminIcon name="assistant" className="h-6 w-6" /></span>
+            <div><p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-300">Centro de comando · local e seguro</p>
+              <h2 className="mt-1 text-2xl font-semibold text-white sm:text-4xl">Assistente Administrativo</h2>
+              <p className="mt-2 text-sm text-stone-400">Fale ou digite. Você sempre revisa antes de salvar.</p></div>
+          </div>
           <textarea
             value={adminAssistantText}
             onChange={(event) => { setAdminAssistantText(event.target.value); setAdminAssistantPreview(null); setAdminAssistantResult(""); }}
             rows={3}
             placeholder="Ex.: Caique pagou ontem via Pix os 24 reais que estava devendo"
-            className="mt-5 w-full resize-none rounded-lg border border-emerald-400/25 bg-black/70 px-4 py-3 text-white outline-none focus:border-emerald-300"
+            className="relative mt-6 min-h-28 w-full resize-none rounded-2xl border border-emerald-400/25 bg-black/70 px-5 py-4 text-base text-white shadow-inner outline-none transition placeholder:text-stone-600 focus:border-emerald-300 focus:ring-4 focus:ring-emerald-400/10"
           />
-          <div className="mt-3 grid gap-2 sm:flex sm:flex-wrap">
-            <button type="button" onClick={() => interpretAdministrativeCommand()} disabled={!adminAssistantText.trim() || isAdminAssistantListening}
-              className="min-h-12 rounded-md bg-emerald-300 px-5 text-xs font-bold uppercase tracking-[0.14em] text-black disabled:opacity-40">
-              Interpretar comando
-            </button>
-            {!isAdminAssistantListening ? (
-              <button type="button" onClick={startAdminAssistantVoice}
-                className="min-h-12 rounded-md border border-emerald-400/40 px-5 text-xs font-bold uppercase tracking-[0.14em] text-emerald-200">
-                Falar comando
-              </button>
-            ) : (
-              <>
-                <button type="button" onClick={cancelAdminAssistantVoice}
-                  className="min-h-12 rounded-md border border-red-400/40 px-5 text-xs font-bold uppercase tracking-[0.14em] text-red-200">
-                  X Cancelar
-                </button>
-                <button type="button" onClick={finishAdminAssistantVoice}
-                  className="min-h-12 rounded-md border border-emerald-400/40 px-5 text-xs font-bold uppercase tracking-[0.14em] text-emerald-200">
-                  ✓ Concluir e interpretar
-                </button>
-              </>
-            )}
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
+          {!isAdminAssistantListening ? <div className="mt-3 grid grid-cols-2 gap-2 sm:flex">
+            <button type="button" onClick={startAdminAssistantVoice} className="inline-flex min-h-14 items-center justify-center gap-2 rounded-xl border border-emerald-400/35 bg-emerald-400/10 px-5 text-sm font-bold text-emerald-100 transition hover:bg-emerald-400/20"><AdminIcon name="mic" /> Falar</button>
+            <button type="button" onClick={() => interpretAdministrativeCommand()} disabled={!adminAssistantText.trim()}
+              className="inline-flex min-h-14 items-center justify-center gap-2 rounded-xl bg-emerald-300 px-5 text-sm font-bold text-black transition hover:bg-emerald-200 disabled:opacity-40"><AdminIcon name="check" /> Interpretar</button>
+          </div> : (
+            <div role="status" aria-live="polite" className="mt-4 flex items-center gap-3 rounded-2xl border border-emerald-300/35 bg-black/80 p-3 shadow-xl shadow-black/40">
+              <span className="relative grid h-11 w-11 shrink-0 place-items-center rounded-full bg-emerald-300 text-black"><span className="absolute inset-0 animate-ping rounded-full bg-emerald-300/30"/><AdminIcon name="mic" /></span>
+              <div className="min-w-0 flex-1"><p className="text-sm font-semibold text-white">Ouvindo…</p><p className="truncate text-xs text-stone-400">Pode pausar e continuar. Termine quando quiser.</p></div>
+              <button type="button" onClick={cancelAdminAssistantVoice} aria-label="Cancelar comando de voz" className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-red-400/35 text-red-200 transition hover:bg-red-400/15"><AdminIcon name="close" /></button>
+              <button type="button" onClick={finishAdminAssistantVoice} aria-label="Concluir e interpretar comando de voz" className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-emerald-300 text-black transition hover:bg-emerald-200"><AdminIcon name="check" /></button>
+            </div>
+          )}
+          <div className="mt-4 flex gap-2 overflow-x-auto pb-2 sm:flex-wrap">
             {["Quem está me devendo?", "Quem tenho que cobrar hoje?", "Caique pagou 24 no Pix ontem", "Remarca a cobrança da Suzana para dia 15"].map((example) => (
               <button key={example} type="button" onClick={() => { setAdminAssistantText(example); interpretAdministrativeCommand(example); }}
-                className="min-h-10 rounded-full border border-white/15 px-3 text-xs text-stone-300 hover:border-emerald-400/40">
+                className="min-h-10 shrink-0 rounded-full border border-white/15 bg-white/[0.035] px-3 text-xs text-stone-300 hover:border-emerald-400/40">
                 {example}
               </button>
             ))}
           </div>
 
           {adminAssistantPreview ? (
-            <div className="mt-6 rounded-lg border border-white/10 bg-black/50 p-5">
+            <div className="mt-6 rounded-2xl border border-white/10 bg-black/60 p-4 sm:p-6">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="font-semibold text-white">{adminAssistantPreview.title}</h3>
+                <div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-emerald-300 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-black">{intentLabels[adminAssistantPreview.intent]}</span><h3 className="font-semibold text-white">{adminAssistantPreview.title}</h3></div>
                 <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${adminAssistantPreview.confidence === "alta" ? "border-emerald-400/30 text-emerald-300" : adminAssistantPreview.confidence === "media" ? "border-amber-400/30 text-amber-200" : "border-red-400/30 text-red-200"}`}>
                   Confiança {adminAssistantPreview.confidence}
                 </span>
               </div>
               <p className="mt-3 whitespace-pre-line text-sm leading-7 text-stone-300">{adminAssistantPreview.message}</p>
+              {adminAssistantPreview.action?.batchSales?.length ? (
+                <div className="mt-5 grid gap-3 lg:grid-cols-2">
+                  {adminAssistantPreview.action.batchSales.map((sale, index) => (
+                    <article key={`${sale.customerName}-${sale.perfumeSlug}-${index}`} className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
+                      <div className="flex items-center justify-between gap-3"><p className="font-semibold text-white">Venda {index + 1} · {sale.customerName}</p>
+                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${sale.status === "pago" ? "bg-emerald-400/15 text-emerald-300" : "bg-gold/15 text-gold-light"}`}>{sale.status}</span></div>
+                      {sale.identification ? <p className="mt-1 text-xs text-blue-200">{sale.identification}</p> : null}
+                      <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                        <div><p className="text-xs text-stone-500">Perfume</p><p className="mt-1 text-stone-200">{sale.quantity}x {sale.perfumeName}</p></div>
+                        <div><p className="text-xs text-stone-500">Valor</p><p className="mt-1 font-semibold text-gold-light">{formatCurrency(sale.unitPrice * sale.quantity)}</p></div>
+                        <div><p className="text-xs text-stone-500">Data da venda</p><p className="mt-1 text-stone-200">{formatReceivableDate(sale.saleDate)}</p></div>
+                        <div><p className="text-xs text-stone-500">Recebimento</p><p className="mt-1 text-stone-200">{sale.status === "pago" ? `À vista · ${sale.paymentMethod ?? "outro"}` : formatReceivableDate(sale.expectedPaymentDate)}</p></div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
               {adminAssistantPreview.warnings.map((warning) => (
                 <p key={warning} className="mt-3 rounded-md border border-amber-400/25 bg-amber-400/10 p-3 text-sm text-amber-100">{warning}</p>
               ))}
@@ -1977,6 +2093,13 @@ export default function AdminPage() {
                   </select>
                 </label>
               ) : null}
+              {adminAssistantPreview.intent === "registrar_vendas_lote" && googleStatus.connected
+                && adminAssistantPreview.action?.batchSales?.some((sale) => sale.status !== "pago" && sale.expectedPaymentDate) ? (
+                <label className="mt-4 flex items-center gap-3 rounded-md border border-blue-400/20 bg-blue-400/10 p-3 text-sm text-blue-100">
+                  <input type="checkbox" checked={adminAssistantSyncGoogle} onChange={(event) => setAdminAssistantSyncGoogle(event.target.checked)} />
+                  Criar lembretes das vendas pendentes no Google Agenda
+                </label>
+              ) : null}
               {adminAssistantPreview.requiresConfirmation && (() => {
                 const selected = sales.find((sale) => sale.id === (adminAssistantPreview.action?.saleId ?? adminAssistantSaleId));
                 if (!selected?.googleCalendarEventId) return null;
@@ -1990,15 +2113,13 @@ export default function AdminPage() {
                 );
               })()}
               {adminAssistantPreview.requiresConfirmation ? (
-                <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+                <div className="mt-5 grid grid-cols-2 gap-2 sm:flex">
                   <button type="button" onClick={() => { setAdminAssistantPreview(null); setAdminAssistantResult("Ação cancelada. Nenhum dado foi alterado."); }}
-                    className="min-h-11 rounded-md border border-white/20 px-5 text-xs font-bold uppercase tracking-[0.14em] text-stone-300">
-                    Cancelar
+                    className="inline-flex min-h-14 items-center justify-center gap-2 rounded-xl border border-white/20 px-5 text-xs font-bold uppercase tracking-[0.12em] text-stone-300"><AdminIcon name="close" /> Cancelar
                   </button>
                   <button type="button" onClick={() => void confirmAdministrativeAction()}
                     disabled={Boolean(adminAssistantPreview.action?.candidateSaleIds?.length && !adminAssistantPreview.action.saleId && !adminAssistantSaleId)}
-                    className="min-h-11 rounded-md bg-emerald-300 px-5 text-xs font-bold uppercase tracking-[0.14em] text-black disabled:opacity-40">
-                    Confirmar ação
+                    className="inline-flex min-h-14 items-center justify-center gap-2 rounded-xl bg-emerald-300 px-5 text-xs font-bold uppercase tracking-[0.12em] text-black disabled:opacity-40"><AdminIcon name="check" /> {adminAssistantPreview.intent === "registrar_vendas_lote" ? "Confirmar criação das vendas" : "Confirmar ação"}
                   </button>
                 </div>
               ) : null}

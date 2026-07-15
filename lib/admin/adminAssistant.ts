@@ -2,6 +2,7 @@ import { getRemainingAmount, getSaleTotal, summarizeSaleItems } from "./flexible
 import { addDays, nextDayOfMonth, toLocalDateInput, type ExpectedPaymentMethod } from "./receivables";
 
 export type AdminAssistantIntent =
+  | "registrar_vendas_lote"
   | "registrar_pagamento"
   | "consultar_pendencias"
   | "consultar_cobrancas_por_data"
@@ -42,6 +43,23 @@ export type AdminAssistantAction = {
   perfumeSlug?: string;
   perfumeName?: string;
   quantity?: number;
+  resolution?: "mark_paid" | "remove_reminder";
+  batchSales?: AdminAssistantBatchSale[];
+};
+
+export type AdminAssistantBatchSale = {
+  customerName: string;
+  identification?: string;
+  perfumeSlug: string;
+  perfumeName: string;
+  quantity: number;
+  unitPrice: number;
+  saleDate: string;
+  status: "pago" | "pendente";
+  expectedPaymentDate?: string;
+  paymentMethod?: ExpectedPaymentMethod;
+  paidAt?: string;
+  warnings: string[];
 };
 
 export type AdminAssistantPreview = {
@@ -107,6 +125,7 @@ function paymentMethod(source: string): ExpectedPaymentMethod | undefined {
   if (source.includes("dinheiro")) return "dinheiro";
   if (source.includes("cartao")) return "cartao";
   if (source.includes("salario") || source.includes("proximo pagamento")) return "salario";
+  if (source.includes("outro")) return "outro";
   return undefined;
 }
 
@@ -126,6 +145,8 @@ function relativeDate(source: string, purpose: "paid" | "future"): string | unde
 }
 
 function detectIntent(source: string): AdminAssistantIntent {
+  if (/\b(vendi|tambem vendi|(?:fazer|registrar|cadastrar|anota) essas?(?: \w+)? vendas?)\b/.test(source)
+    || (source.match(/\bvendi\b/g)?.length ?? 0) > 1) return "registrar_vendas_lote";
   if (/\b(ajuda|o que posso falar|exemplos? de comandos?)\b/.test(source)) return "ajuda";
   if (/\b(retirei|peguei)\b/.test(source) && /\b(uso pessoal|para mim)\b/.test(source)) return "registrar_uso_pessoal";
   if (/\b(dei|presente|brinde)\b/.test(source) && /\b(brinde|presente|dei)\b/.test(source)) return "registrar_brinde";
@@ -137,10 +158,125 @@ function detectIntent(source: string): AdminAssistantIntent {
   return "desconhecido";
 }
 
+const monthNumbers: Record<string, number> = {
+  janeiro: 1, fevereiro: 2, marco: 3, abril: 4, maio: 5, junho: 6,
+  julho: 7, agosto: 8, setembro: 9, outubro: 10, novembro: 11, dezembro: 12,
+};
+
+const perfumeAliases: Array<{ canonical: string; aliases: string[] }> = [
+  { canonical: "Silverion Black", aliases: ["silverion black", "silver black", "azzaro silver black"] },
+  { canonical: "Scarlet Noir", aliases: ["scarlet noir", "scarle noir", "scarlat noir", "scandalo", "scandal", "scandal pour homme", "escandalo"] },
+  { canonical: "Sultan Noir", aliases: ["sultan noir", "sultan"] },
+  { canonical: "Samarah Rose", aliases: ["samarah rose", "samarah"] },
+  { canonical: "Belle Venom", aliases: ["belle venom", "good girl"] },
+  { canonical: "Moon Candy", aliases: ["moon candy", "fantasy"] },
+  { canonical: "Lumiara", aliases: ["lumiara", "la nuit tresor"] },
+];
+
+function dateInput(day: number, month: number, year = new Date().getFullYear()) {
+  const safe = new Date(year, month - 1, day);
+  if (safe.getFullYear() !== year || safe.getMonth() !== month - 1 || safe.getDate() !== day) return undefined;
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function explicitDate(fragment: string) {
+  const numeric = fragment.match(/\bdia\s+(\d{1,2})\s*\/\s*(\d{1,2})(?:\s*\/\s*(\d{2,4}))?/);
+  if (numeric) {
+    const rawYear = numeric[3] ? Number(numeric[3]) : new Date().getFullYear();
+    return dateInput(Number(numeric[1]), Number(numeric[2]), rawYear < 100 ? 2000 + rawYear : rawYear);
+  }
+  const named = fragment.match(/\bdia\s+(\d{1,2})(?:\s+(?:agora\s+)?(?:no\s+mes\s+)?de?\s*)?(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b/);
+  return named ? dateInput(Number(named[1]), monthNumbers[named[2]]) : undefined;
+}
+
+function findBatchPerfume(segment: string, perfumes: AdminAssistantPerfume[]) {
+  const candidates = perfumeAliases.flatMap((entry) => entry.aliases.map((alias) => ({ ...entry, alias })))
+    .sort((a, b) => b.alias.length - a.alias.length);
+  for (const candidate of candidates) {
+    const index = segment.indexOf(candidate.alias);
+    if (index < 0) continue;
+    const perfume = perfumes.find((item) => normalizeAdminText(item.name) === normalizeAdminText(candidate.canonical));
+    if (perfume) return { perfume, alias: candidate.alias, index, legacy: candidate.alias !== normalizeAdminText(candidate.canonical) };
+  }
+  const direct = perfumes.map((perfume) => ({ perfume, alias: normalizeAdminText(perfume.name) }))
+    .sort((a, b) => b.alias.length - a.alias.length).find((item) => segment.includes(item.alias));
+  return direct ? { ...direct, index: segment.indexOf(direct.alias), legacy: false } : undefined;
+}
+
+function titleName(value: string) {
+  return value ? value[0].toLocaleUpperCase("pt-BR") + value.slice(1) : value;
+}
+
+function batchCustomer(segment: string, perfumeIndex: number, perfumeAlias: string) {
+  const beforePerfume = segment.slice(0, perfumeIndex);
+  const afterPerfume = segment.slice(perfumeIndex + perfumeAlias.length);
+  const beforeMatch = beforePerfume.match(/\bpara\s+(?:a\s+|o\s+)?(?:(cuidadora|professora|secretaria)\s+)?([a-z]{3,})([\s\S]*)$/);
+  const afterMatch = afterPerfume.match(/\bpara\s+(?:a\s+|o\s+)?(?:(cuidadora|professora|secretaria)\s+)?([a-z]{3,})/);
+  const match = beforeMatch ?? afterMatch;
+  if (!match) return undefined;
+  const roleBefore = match[1];
+  const customerName = titleName(match[2]);
+  const suffix = beforeMatch?.[3] ?? "";
+  let identification = roleBefore;
+  if (/\bcuidadora\b/.test(suffix)) identification = "cuidadora";
+  else if (/\bprofessora\b/.test(suffix)) identification = "professora";
+  else if (/\bsecretaria\b/.test(suffix)) {
+    const school = suffix.match(/\bescola\s+([a-z\s]+?)(?=\s+(?:um|uma|\d+)\s+(?:perfume\s+)?$|$)/)?.[1]?.trim();
+    identification = school ? `secretaria da Escola ${school.split(" ").map(titleName).join(" ")}` : "secretaria";
+  }
+  return { customerName, identification };
+}
+
+function parseBatchSales(source: string, perfumes: AdminAssistantPerfume[]) {
+  const globalValueFragment = source.match(/\b(?:cada perfume|cada um|cada uma|todos)\b[\s\S]*?(?:(?:no\s+)?valor\s+de|por|de)?\s*(?:r\$\s*)?(\d+(?:[,.]\d+)?)/);
+  const globalValue = globalValueFragment ? Number(globalValueFragment[1].replace(",", ".")) : undefined;
+  const chunks = source.replace(/\s+(?:e\s+)?tambem\s+vendi\b/g, " ||| vendi").split("|||")
+    .map((part) => part.trim()).filter((part) => /\bvendi\b/.test(part));
+  const batch: AdminAssistantBatchSale[] = [];
+  let inheritedSaleDate: string | undefined;
+  for (const chunk of chunks) {
+    const perfumeMatch = findBatchPerfume(chunk, perfumes);
+    if (!perfumeMatch) continue;
+    const customer = batchCustomer(chunk, perfumeMatch.index, perfumeMatch.alias);
+    if (!customer) continue;
+    const receiveFragment = chunk.match(/\b(?:para\s+receber|receber|para\s+pagar|pagar)\b([\s\S]*?)(?=\b(?:isso|cada perfume|cada um|cada uma|todos|fazer essas|$))/)?.[1];
+    const beforeReceive = chunk.split(/\b(?:para\s+receber|receber|para\s+pagar|pagar)\b/)[0];
+    const ownSaleDate = explicitDate(beforeReceive);
+    const saleDate = ownSaleDate ?? inheritedSaleDate ?? toLocalDateInput();
+    inheritedSaleDate = saleDate;
+    const expectedPaymentDate = receiveFragment ? explicitDate(receiveFragment)
+      ?? (() => { const day = receiveFragment.match(/\bdia\s+(\d{1,2})\b/)?.[1]; return day ? dateInput(Number(day), new Date().getMonth() + 1) : undefined; })() : undefined;
+    const localPricePart = chunk.split(/\b(?:cada perfume|cada um|cada uma|todos)\b/)[0];
+    const localValueMatch = localPricePart.match(/\b(?:por|valor de)\s*(?:r\$\s*)?(\d+(?:[,.]\d+)?)/);
+    const unitPrice = localValueMatch ? Number(localValueMatch[1].replace(",", ".")) : globalValue ?? 0;
+    const quantityFragment = chunk.slice(Math.max(0, perfumeMatch.index - 24), perfumeMatch.index);
+    const quantity = Math.max(1, Math.floor(parseValue(quantityFragment) ?? 1));
+    const paid = /\b(recebi|pago|pagou)\b[\s\S]*?\b(pix|a vista)\b|\ba vista\b/.test(chunk);
+    const warnings: string[] = [];
+    if (perfumeMatch.legacy) warnings.push("Perfume identificado por referência antiga/original. Confira antes de salvar.");
+    if (!ownSaleDate && batch.length > 0) warnings.push("Data da venda herdada da venda anterior. Confira antes de salvar.");
+    if (!unitPrice) warnings.push("Valor não identificado. Confira antes de salvar.");
+    batch.push({ ...customer, perfumeSlug: perfumeMatch.perfume.slug, perfumeName: perfumeMatch.perfume.name,
+      quantity, unitPrice, saleDate, status: paid ? "pago" : "pendente",
+      expectedPaymentDate: paid ? undefined : expectedPaymentDate, paymentMethod: paid ? paymentMethod(chunk) ?? "outro" : undefined,
+      paidAt: paid ? `${saleDate}T12:00:00.000Z` : undefined, warnings });
+  }
+  return batch;
+}
+
 function findCustomer(source: string, sales: AdminAssistantSale[]): string | undefined {
   const names = [...new Set(sales.map((sale) => sale.customerName).filter(Boolean))]
     .sort((a, b) => b.length - a.length);
-  return names.find((name) => source.includes(normalizeAdminText(name)));
+  const sourceWords = source.split(/[^a-z0-9]+/).filter((word) => word.length >= 3);
+  return names.find((name) => {
+    const normalizedName = normalizeAdminText(name);
+    if (source.includes(normalizedName)) return true;
+    return normalizedName.split(/[^a-z0-9]+/).some((nameWord) =>
+      nameWord.length >= 3 && sourceWords.some((sourceWord) =>
+        nameWord.startsWith(sourceWord) || sourceWord.startsWith(nameWord)
+      )
+    );
+  });
 }
 
 function pendingMatches(customer: string | undefined, sales: AdminAssistantSale[]) {
@@ -184,6 +320,21 @@ export function interpretAdminCommand(
 
   if (!source || intent === "desconhecido") {
     return { ok: false, preview: basePreview("desconhecido", "Comando não reconhecido", "Não consegui entender com segurança. Tente informar cliente, ação, valor e data.") };
+  }
+  if (intent === "registrar_vendas_lote") {
+    const batchSales = parseBatchSales(source, perfumes);
+    if (!batchSales.length) {
+      return { ok: false, preview: basePreview(intent, "Vendas não identificadas", "Não encontrei detalhes suficientes para montar as vendas. Informe cliente e perfume em cada venda.") };
+    }
+    const warnings = batchSales.flatMap((sale, index) => sale.warnings.map((warning) => `Venda ${index + 1}: ${warning}`));
+    const complete = batchSales.every((sale) => sale.customerName && sale.perfumeSlug && sale.unitPrice > 0);
+    return { ok: true, preview: {
+      intent, confidence: complete && warnings.length === 0 ? "alta" : "media",
+      title: `${batchSales.length} venda(s) detectada(s)`,
+      message: "Revise cada venda abaixo. O lote só será criado depois da sua confirmação.",
+      warnings, matches: [], requiresConfirmation: true,
+      action: { type: intent, batchSales },
+    } };
   }
   if (intent === "ajuda") {
     return { ok: true, preview: { ...basePreview(intent, "Exemplos de comandos", "Você pode consultar pendências e cobranças, registrar pagamentos, remarcar datas, quitar cobranças e registrar brindes ou uso pessoal. Toda alteração exige confirmação."), confidence: "alta" } };
@@ -236,27 +387,41 @@ export function interpretAdminCommand(
       action: { type: intent, saleId: matches.length === 1 ? matches[0].id : undefined, candidateSaleIds, customerName: customer, date } } };
   }
   if (intent === "cancelar_cobranca_ou_marcar_recebido") {
-    return { ok: true, preview: { intent, confidence: matches.length === 1 ? "alta" : "media", title: "Marcar cobrança como recebida",
-      message: `A pendência de ${customer} será marcada como paga.`, warnings: selectionWarning, matches, requiresConfirmation: true,
-      action: { type: intent, saleId: matches.length === 1 ? matches[0].id : undefined, candidateSaleIds, customerName: customer, date: relativeDate(source, "paid") ?? toLocalDateInput() } } };
+    const removeReminderOnly = source.includes("tira o lembrete")
+      && !source.includes("pagou") && !source.includes("paga") && !source.includes("pago");
+    return { ok: true, preview: { intent, confidence: matches.length === 1 ? "alta" : "media",
+      title: removeReminderOnly ? "Cancelar lembrete de cobrança" : "Marcar cobrança como recebida",
+      message: removeReminderOnly
+        ? `O lembrete de cobrança de ${customer} será cancelado, sem marcar a venda como paga.`
+        : `A pendência de ${customer} será marcada como paga.`,
+      warnings: selectionWarning, matches, requiresConfirmation: true,
+      action: { type: intent, saleId: matches.length === 1 ? matches[0].id : undefined, candidateSaleIds, customerName: customer,
+        date: relativeDate(source, "paid") ?? toLocalDateInput(), resolution: removeReminderOnly ? "remove_reminder" : "mark_paid" } } };
   }
 
   const amount = parsePaymentAmount(source);
   const remainingAfter = parseRemainingAfter(source);
-  const selected = matches.length === 1 ? matches[0] : undefined;
+  const amountMatchedSales = matches.filter((sale) => {
+    const balance = getRemainingAmount(sale);
+    return (amount !== undefined && Math.abs(balance - amount) <= 0.01)
+      || (amount !== undefined && remainingAfter !== undefined && Math.abs(balance - amount - remainingAfter) <= 0.01);
+  });
+  const paymentMatches = matches.length > 1 && amountMatchedSales.length === 1 ? amountMatchedSales : matches;
+  const selected = paymentMatches.length === 1 ? paymentMatches[0] : undefined;
   const balance = selected ? getRemainingAmount(selected) : undefined;
   const effectiveAmount = source.includes("restante") && balance !== undefined ? balance : amount;
-  const warnings = [...selectionWarning];
+  const paymentCandidateSaleIds = paymentMatches.map((sale) => sale.id);
+  const warnings = paymentMatches.length > 1 ? ["Há mais de uma pendência. Escolha a venda correta antes de confirmar."] : [];
   if (effectiveAmount === undefined && remainingAfter === undefined) warnings.push("O valor não foi identificado; ao confirmar será usado o saldo total da venda escolhida.");
   if (balance !== undefined && effectiveAmount !== undefined && effectiveAmount > balance) warnings.push("Valor pago maior que o saldo pendente. Confira antes de confirmar.");
   if (balance !== undefined && effectiveAmount !== undefined && remainingAfter !== undefined
     && Math.abs(balance - effectiveAmount - remainingAfter) > 0.01) {
     warnings.push(`Os valores informados não fecham com o saldo atual de ${formatCurrency(balance)}. Confira antes de confirmar.`);
   }
-  return { ok: true, preview: { intent, confidence: matches.length === 1 && (effectiveAmount !== undefined || source.includes("restante")) ? "alta" : "media",
+  return { ok: true, preview: { intent, confidence: paymentMatches.length === 1 && (effectiveAmount !== undefined || source.includes("restante")) ? "alta" : "media",
     title: "Registrar pagamento", message: `Pagamento de ${customer}: ${effectiveAmount === undefined ? "saldo restante" : formatCurrency(effectiveAmount)}${remainingAfter !== undefined ? `, permanecendo ${formatCurrency(remainingAfter)}` : ""}, via ${paymentMethod(source) ?? "forma não informada"}, em ${relativeDate(source, "paid") ?? toLocalDateInput()}.`,
-    warnings, matches, requiresConfirmation: true,
-    action: { type: intent, saleId: selected?.id, candidateSaleIds, customerName: customer, amount: effectiveAmount, remainingAfter,
+    warnings, matches: paymentMatches, requiresConfirmation: true,
+    action: { type: intent, saleId: selected?.id, candidateSaleIds: paymentCandidateSaleIds, customerName: customer, amount: effectiveAmount, remainingAfter,
       date: relativeDate(source, "paid") ?? toLocalDateInput(),
       expectedPaymentDate: remainingAfter !== undefined ? relativeDate(source, "future") : undefined,
       paymentMethod: paymentMethod(source) } } };
