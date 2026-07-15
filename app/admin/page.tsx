@@ -38,6 +38,7 @@ import {
 import { AdminIcon, AdminQuickActions, AdminSummaryCards, type SummaryCard } from "./AdminDashboardVisuals";
 import OrderDraftBox from "./OrderDraftBox";
 import type { OrderDraftConversionResult } from "@/lib/admin/orderDraftConverter";
+import type { AdminAiResult } from "@/lib/ai/types";
 
 const INVENTORY_STORAGE_KEY = "amaro_inventory_v1";
 const BACKUP_VERSION = "amaro_backup_v1";
@@ -606,6 +607,10 @@ export default function AdminPage() {
   const [adminAssistantSaleId, setAdminAssistantSaleId] = useState("");
   const [isAdminAssistantListening, setIsAdminAssistantListening] = useState(false);
   const [adminAssistantSyncGoogle, setAdminAssistantSyncGoogle] = useState(true);
+  const [adminAiBusy, setAdminAiBusy] = useState(false);
+  const [adminAiStatus, setAdminAiStatus] = useState<"unchecked" | "configured" | "disabled" | "error" | "limit">("unchecked");
+  const [adminAiMessage, setAdminAiMessage] = useState("");
+  const [adminAiResult, setAdminAiResult] = useState<AdminAiResult | null>(null);
   const adminRecognitionRef = useRef<{ stop(): void; abort(): void } | null>(null);
   const adminVoiceTranscriptRef = useRef("");
   const adminVoiceFinalTranscriptRef = useRef("");
@@ -975,6 +980,23 @@ export default function AdminPage() {
     setAdminAssistantPreview(null);
     setAdminAssistantResult("Rascunho carregado. Revise o texto e clique em Interpretar.");
     window.requestAnimationFrame(() => document.getElementById("assistente-administrativo")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
+
+  async function interpretWithLocalAi() {
+    const text = adminAssistantText.trim();
+    if (!text) { setAdminAiMessage("Digite ou fale um comando antes de chamar a IA local."); return; }
+    setAdminAiBusy(true); setAdminAiMessage(""); setAdminAiResult(null);
+    try {
+      const response = await fetch("/api/admin/ai/interpret", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, context: "admin_assistant" }) });
+      const data = await response.json() as { ok?: boolean; message?: string; code?: string; result?: AdminAiResult };
+      if (!response.ok || !data.ok || !data.result) {
+        setAdminAiStatus(data.code === "AI_DISABLED" ? "disabled" : data.code === "AI_LIMIT_REACHED" ? "limit" : "error");
+        setAdminAiMessage(data.message ?? "IA local desativada ou indisponível."); return;
+      }
+      setAdminAiStatus("configured"); setAdminAiResult(data.result);
+      setAdminAiMessage("Proposta recebida. Revise os dados; nada foi salvo.");
+    } catch { setAdminAiStatus("error"); setAdminAiMessage("Não foi possível conectar à IA local. O assistente normal continua disponível."); }
+    finally { setAdminAiBusy(false); }
   }
 
   async function confirmOrderDraftConversion(draftId: string, conversion: OrderDraftConversionResult) {
@@ -2080,7 +2102,8 @@ export default function AdminPage() {
             <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-emerald-300 text-black"><AdminIcon name="assistant" className="h-6 w-6" /></span>
             <div><p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-300">Centro de comando · local e seguro</p>
               <h2 className="mt-1 text-2xl font-semibold text-white sm:text-4xl">Assistente Administrativo</h2>
-              <p className="mt-2 text-sm text-stone-400">Fale ou digite. Você sempre revisa antes de salvar.</p></div>
+              <p className="mt-2 text-sm text-stone-400">Fale ou digite. Você sempre revisa antes de salvar.</p>
+              <span className={`mt-3 inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${adminAiStatus === "configured" ? "border-violet-400/30 bg-violet-400/10 text-violet-200" : adminAiStatus === "limit" || adminAiStatus === "error" ? "border-red-400/25 bg-red-400/10 text-red-200" : "border-white/10 bg-white/[0.04] text-stone-400"}`}>IA local: {adminAiStatus === "configured" ? "configurada" : adminAiStatus === "disabled" ? "desativada" : adminAiStatus === "error" ? "erro ao conectar" : adminAiStatus === "limit" ? "limite atingido" : "não verificada"}</span></div>
           </div>
           <textarea
             value={adminAssistantText}
@@ -2093,6 +2116,8 @@ export default function AdminPage() {
             <button type="button" onClick={startAdminAssistantVoice} className="inline-flex min-h-14 items-center justify-center gap-2 rounded-xl border border-emerald-400/35 bg-emerald-400/10 px-5 text-sm font-bold text-emerald-100 transition hover:bg-emerald-400/20"><AdminIcon name="mic" /> Falar</button>
             <button type="button" onClick={() => interpretAdministrativeCommand()} disabled={!adminAssistantText.trim()}
               className="inline-flex min-h-14 items-center justify-center gap-2 rounded-xl bg-emerald-300 px-5 text-sm font-bold text-black transition hover:bg-emerald-200 disabled:opacity-40"><AdminIcon name="check" /> Interpretar</button>
+            <button type="button" onClick={() => void interpretWithLocalAi()} disabled={!adminAssistantText.trim() || adminAiBusy}
+              className="col-span-2 inline-flex min-h-14 items-center justify-center gap-2 rounded-xl border border-violet-400/35 bg-violet-400/10 px-5 text-sm font-bold text-violet-100 disabled:opacity-40"><AdminIcon name="assistant" /> {adminAiBusy ? "Interpretando…" : "Interpretar com IA local"}</button>
           </div> : (
             <div role="status" aria-live="polite" className="mt-4 flex items-center gap-3 rounded-2xl border border-emerald-300/35 bg-black/80 p-3 shadow-xl shadow-black/40">
               <span className="relative grid h-11 w-11 shrink-0 place-items-center rounded-full bg-emerald-300 text-black"><span className="absolute inset-0 animate-ping rounded-full bg-emerald-300/30"/><AdminIcon name="mic" /></span>
@@ -2109,6 +2134,14 @@ export default function AdminPage() {
               </button>
             ))}
           </div>
+
+          {adminAiMessage ? <p className="mt-4 rounded-xl border border-violet-400/20 bg-violet-400/10 p-3 text-sm text-violet-100">{adminAiMessage}</p> : null}
+          {adminAiResult ? <div className="mt-5 rounded-2xl border border-violet-400/25 bg-black/65 p-4 sm:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-violet-300">Proposta da IA · somente leitura</p><h3 className="mt-1 text-xl font-semibold text-white">{adminAiResult.intent}</h3><p className="mt-1 text-sm text-stone-400">Modo {adminAiResult.mode.replaceAll("_", " ")} · confiança {Math.round(adminAiResult.confidence * 100)}%</p></div><span className={`rounded-full px-3 py-1 text-xs ${adminAiResult.needsReview ? "bg-amber-400/15 text-amber-200" : "bg-emerald-400/15 text-emerald-200"}`}>{adminAiResult.needsReview ? "Revisão obrigatória" : "Alta confiança"}</span></div>
+            {adminAiResult.warnings.length ? <div className="mt-4 grid gap-2">{adminAiResult.warnings.map((warning) => <p key={warning} className="rounded-lg border border-amber-400/20 bg-amber-400/10 p-3 text-xs text-amber-100">{warning}</p>)}</div> : null}
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">{(adminAiResult.sales.length ? adminAiResult.sales : [{ customerName: adminAiResult.customerName, customerNote: adminAiResult.customerNote, totalAmount: adminAiResult.totalAmount, paymentStatus: adminAiResult.paymentStatus, expectedPaymentDate: adminAiResult.expectedPaymentDate, items: adminAiResult.items, warnings: [] }]).map((sale, index) => <article key={`${sale.customerName ?? "proposta"}-${index}`} className="rounded-xl border border-white/10 bg-white/[0.035] p-4"><p className="font-semibold text-white">{adminAiResult.sales.length > 1 ? `Venda ${index + 1}` : "Dados interpretados"}</p><p className="mt-2 text-sm text-stone-300">{sale.customerName || "Cliente não identificado"}{sale.customerNote ? ` · ${sale.customerNote}` : ""}</p><p className="mt-2 text-xs text-stone-500">{sale.items.map((item) => `${item.quantity}x ${item.perfumeName}`).join(", ") || "Sem itens identificados"}</p><p className="mt-2 text-sm font-semibold text-violet-200">{typeof sale.totalAmount === "number" ? formatCurrency(sale.totalAmount) : "Valor não identificado"} · {sale.paymentStatus || "status não identificado"}</p>{sale.expectedPaymentDate ? <p className="mt-1 text-xs text-stone-400">Receber em {formatReceivableDate(sale.expectedPaymentDate)}</p> : null}</article>)}</div>
+            <div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={() => interpretAdministrativeCommand()} className="min-h-11 rounded-xl border border-emerald-400/30 px-4 text-xs font-bold text-emerald-200">Tentar encaixar com regras locais</button><button type="button" onClick={() => void navigator.clipboard.writeText(JSON.stringify(adminAiResult, null, 2))} className="min-h-11 rounded-xl border border-white/15 px-4 text-xs font-semibold text-stone-300">Copiar proposta JSON</button></div>
+          </div> : null}
 
           {adminAssistantPreview ? (
             <div className="mt-6 rounded-2xl border border-white/10 bg-black/60 p-4 sm:p-6">

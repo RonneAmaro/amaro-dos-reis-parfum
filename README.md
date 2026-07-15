@@ -54,6 +54,52 @@ NEXT_PUBLIC_WHATSAPP_NUMBER=5599999999999
 Nao commitar `.env.local`. Esse arquivo pode conter configuracoes locais e deve
 ficar fora do repositorio.
 
+## IA local com Ollama
+
+O Assistente Administrativo pode usar opcionalmente um modelo local pelo
+Ollama. A IA apenas interpreta o texto e devolve uma proposta JSON para
+revisao: ela nao salva vendas, nao baixa estoque, nao marca pagamentos e nao
+altera o Google Agenda. O assistente por regras continua funcionando quando a
+IA estiver desativada ou indisponivel.
+
+1. Instale o Ollama no computador.
+2. Baixe e teste um modelo:
+
+```bash
+ollama pull qwen2.5:3b
+ollama run qwen2.5:3b
+```
+
+3. Configure somente no `.env.local` ou no ambiente do servidor:
+
+```bash
+AI_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=qwen2.5:3b
+AI_DAILY_LIMIT=50
+AI_MAX_INPUT_CHARS=4000
+AI_TIMEOUT_MS=30000
+```
+
+4. Inicie o projeto e abra `/admin`:
+
+```bash
+npm.cmd run dev -- -p 3001
+```
+
+No Assistente Administrativo, digite um comando e clique em `Interpretar com
+IA local`. A proposta aparece em modo somente leitura e sempre exige revisao.
+Nesta primeira fase, a Caixa Rapida continua usando seu conversor local por
+regras; a opcao Ollama fica concentrada no Assistente Administrativo.
+Para desativar, use `AI_PROVIDER=disabled` ou remova a variavel. No futuro,
+`OLLAMA_BASE_URL` pode apontar para uma VM privada, inclusive uma VM Oracle,
+desde que a aplicacao consiga alcancar o endpoint com seguranca.
+
+O limite diario e mantido apenas na memoria de cada instancia do servidor. Ele
+reinicia quando o processo reinicia e nao e compartilhado entre varias
+instancias. URLs, modelo e demais variaveis permanecem server-side e nunca usam
+o prefixo `NEXT_PUBLIC_`.
+
 ## Supabase futuro
 
 O painel atual em `/admin` usa `localStorage` para vendas, estoque, custos,
