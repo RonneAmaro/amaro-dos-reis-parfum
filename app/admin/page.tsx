@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   perfumeCommerce,
   perfumeSlug,
@@ -30,6 +30,11 @@ import {
   type SaleItemType,
 } from "@/lib/admin/flexibleSales";
 import { parseSalesAssistant } from "@/lib/admin/salesAssistant";
+import {
+  interpretAdminCommand,
+  paymentUpdateForAction,
+  type AdminAssistantPreview,
+} from "@/lib/admin/adminAssistant";
 
 const INVENTORY_STORAGE_KEY = "amaro_inventory_v1";
 const BACKUP_VERSION = "amaro_backup_v1";
@@ -592,6 +597,13 @@ export default function AdminPage() {
   const [assistantText, setAssistantText] = useState("");
   const [assistantMessage, setAssistantMessage] = useState("");
   const [isListening, setIsListening] = useState(false);
+  const [adminAssistantText, setAdminAssistantText] = useState("");
+  const [adminAssistantPreview, setAdminAssistantPreview] = useState<AdminAssistantPreview | null>(null);
+  const [adminAssistantResult, setAdminAssistantResult] = useState("");
+  const [adminAssistantSaleId, setAdminAssistantSaleId] = useState("");
+  const [isAdminAssistantListening, setIsAdminAssistantListening] = useState(false);
+  const [adminAssistantSyncGoogle, setAdminAssistantSyncGoogle] = useState(true);
+  const adminRecognitionRef = useRef<{ stop(): void; abort(): void } | null>(null);
   const [googleStatus, setGoogleStatus] = useState<GoogleCalendarStatus>({ connected: false });
   const [googleMessage, setGoogleMessage] = useState("");
   const [googleBusy, setGoogleBusy] = useState(false);
@@ -931,6 +943,177 @@ export default function AdminPage() {
     recognition.onresult = (event) => setAssistantText(event.results[0][0].transcript);
     recognition.onend = () => setIsListening(false); recognition.onerror = () => setIsListening(false);
     setIsListening(true); recognition.start();
+  }
+
+  function interpretAdministrativeCommand(text = adminAssistantText) {
+    const result = interpretAdminCommand(
+      text,
+      sales,
+      perfumeCommerce.map((perfume) => ({ slug: perfumeSlug(perfume), name: perfume.name }))
+    );
+    setAdminAssistantPreview(result.preview);
+    setAdminAssistantSaleId(result.preview.action?.saleId ?? "");
+    setAdminAssistantSyncGoogle(true);
+    setAdminAssistantResult("");
+  }
+
+  function startAdminAssistantVoice() {
+    type RecognitionInstance = {
+      lang: string; interimResults: boolean; start(): void; stop(): void; abort(): void;
+      onresult: ((event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void) | null;
+      onend: (() => void) | null; onerror: (() => void) | null;
+    };
+    type RecognitionConstructor = new () => RecognitionInstance;
+    const speechWindow = window as typeof window & {
+      SpeechRecognition?: RecognitionConstructor;
+      webkitSpeechRecognition?: RecognitionConstructor;
+    };
+    const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+    if (!Recognition) {
+      setAdminAssistantResult("Reconhecimento de voz não disponível neste navegador. Digite o comando no campo de texto.");
+      return;
+    }
+    const recognition = new Recognition();
+    recognition.lang = "pt-BR";
+    recognition.interimResults = false;
+    recognition.onresult = (event) => setAdminAssistantText(event.results[0][0].transcript);
+    recognition.onend = () => { setIsAdminAssistantListening(false); adminRecognitionRef.current = null; };
+    recognition.onerror = () => { setIsAdminAssistantListening(false); adminRecognitionRef.current = null; setAdminAssistantResult("Não foi possível reconhecer o comando. Tente novamente ou digite."); };
+    adminRecognitionRef.current = recognition;
+    setAdminAssistantResult("");
+    setIsAdminAssistantListening(true);
+    recognition.start();
+  }
+
+  function cancelAdminAssistantVoice() {
+    adminRecognitionRef.current?.abort();
+    adminRecognitionRef.current = null;
+    setIsAdminAssistantListening(false);
+    setAdminAssistantText("");
+    setAdminAssistantPreview(null);
+    setAdminAssistantResult("Comando de voz cancelado.");
+  }
+
+  function finishAdminAssistantVoice() {
+    adminRecognitionRef.current?.stop();
+    adminRecognitionRef.current = null;
+    setIsAdminAssistantListening(false);
+    window.setTimeout(() => interpretAdministrativeCommand(), 0);
+  }
+
+  async function removeAssistantGoogleEvent(sale: Sale) {
+    if (!sale.googleCalendarEventId) return true;
+    try {
+      const response = await fetch("/api/admin/google-calendar/remove-event", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId: sale.googleCalendarEventId }),
+      });
+      if (!response.ok) throw new Error();
+      setSales((current) => current.map((item) => item.id === sale.id ? {
+        ...item, googleCalendarStatus: "removed", googleCalendarEventId: undefined,
+        googleCalendarEventLink: undefined,
+      } : item));
+      return true;
+    } catch {
+      setGoogleMessage("A alteração foi salva, mas o lembrete não pôde ser removido do Google Agenda.");
+      return false;
+    }
+  }
+
+  async function confirmAdministrativeAction() {
+    const action = adminAssistantPreview?.action;
+    if (!action) return;
+    const saleId = action.saleId ?? adminAssistantSaleId;
+
+    if (action.candidateSaleIds?.length && !saleId) {
+      setAdminAssistantResult("Escolha uma venda antes de confirmar.");
+      return;
+    }
+
+    if (action.type === "registrar_uso_pessoal" || action.type === "registrar_brinde") {
+      const perfume = perfumeCommerce.find((item) => perfumeSlug(item) === action.perfumeSlug);
+      if (!perfume || !action.perfumeSlug || !action.perfumeName) {
+        setAdminAssistantResult("Não foi possível localizar o perfume para registrar a retirada.");
+        return;
+      }
+      const quantity = Math.max(1, action.quantity ?? 1);
+      const stored = inventory.find((item) => item.perfumeSlug === action.perfumeSlug);
+      const lineType = stored?.lineType ?? getSuggestedLineType(perfume);
+      const now = new Date().toISOString();
+      const item = createFlexibleItem({
+        id: createId(), perfumeSlug: action.perfumeSlug, perfumeName: action.perfumeName,
+        lineType, quantity, unitPrice: stored?.salePrice ?? getLinePrice(lineType),
+        originalUnitPrice: stored?.salePrice ?? getLinePrice(lineType),
+        unitCost: stored?.unitCost ?? getDefaultUnitCost(lineType), discountValue: 0,
+        itemType: action.type === "registrar_brinde" ? "gift" : "personal_use",
+      });
+      const sale: Sale = {
+        id: createId(), customerName: action.customerName || "Uso pessoal",
+        perfumeSlug: action.perfumeSlug, perfumeName: action.perfumeName, lineType,
+        unitPrice: item.unitPrice, unitCost: item.unitCost, estimatedProfit: -item.unitCost * quantity,
+        quantity, paymentMethod: "pix", status: "pago",
+        notes: action.type === "registrar_brinde" ? "Brinde registrado pelo Assistente Administrativo" : "Uso pessoal registrado pelo Assistente Administrativo",
+        createdAt: now, paidAt: now, items: [item], subtotal: item.subtotal,
+        discountValue: item.discountValue, totalAmount: 0, amountPaid: 0, remainingAmount: 0,
+      };
+      setSales((current) => [sale, ...current]);
+      setInventory((current) => current.map((inventoryItem) => inventoryItem.perfumeSlug === action.perfumeSlug
+        ? { ...inventoryItem, stockQuantity: Math.max(0, inventoryItem.stockQuantity - quantity), updatedAt: now }
+        : inventoryItem));
+      setAdminAssistantResult(`${quantity}x ${action.perfumeName} registrado como ${action.type === "registrar_brinde" ? "brinde" : "uso pessoal"}.`);
+      setAdminAssistantPreview(null);
+      return;
+    }
+
+    const selected = sales.find((sale) => sale.id === saleId);
+    if (!selected) {
+      setAdminAssistantResult("A venda escolhida não foi encontrada. Interprete o comando novamente.");
+      return;
+    }
+
+    if (action.type === "remarcar_cobranca") {
+      const updated = { ...selected, expectedPaymentDate: action.date };
+      setSales((current) => current.map((sale) => sale.id === selected.id ? updated : sale));
+      setAdminAssistantResult(`Cobrança de ${selected.customerName} remarcada para ${action.date}.`);
+      if (adminAssistantSyncGoogle && selected.googleCalendarEventId && googleStatus.connected) await syncSaleWithGoogle(updated);
+      setAdminAssistantPreview(null);
+      return;
+    }
+
+    if (action.type === "registrar_pagamento") {
+      const update = paymentUpdateForAction(selected, action);
+      if (update.paidNow > getRemainingAmount(selected)) {
+        setAdminAssistantResult("Valor pago maior que o saldo pendente. Corrija o comando antes de confirmar.");
+        return;
+      }
+      const paidAt = `${action.date ?? toLocalDateInput()}T12:00:00.000Z`;
+      const updated: Sale = {
+        ...selected, status: update.status, amountPaid: update.amountPaid,
+        remainingAmount: update.remainingAmount,
+        paidAt: update.status === "pago" ? paidAt : selected.paidAt,
+        expectedPaymentDate: update.status === "pago" ? undefined : action.expectedPaymentDate ?? selected.expectedPaymentDate,
+        paymentMethod: action.paymentMethod === "pix" || action.paymentMethod === "dinheiro" || action.paymentMethod === "cartao"
+          ? action.paymentMethod : selected.paymentMethod,
+        expectedPaymentMethod: update.status === "pago" ? selected.expectedPaymentMethod : action.paymentMethod ?? selected.expectedPaymentMethod,
+      };
+      setSales((current) => current.map((sale) => sale.id === selected.id ? updated : sale));
+      setAdminAssistantResult(update.status === "pago"
+        ? `Pagamento confirmado. A venda de ${selected.customerName} foi quitada.`
+        : `Pagamento parcial confirmado. Saldo atual: ${formatCurrency(update.remainingAmount)}.`);
+      if (adminAssistantSyncGoogle && selected.googleCalendarEventId) {
+        if (update.status === "pago") await removeAssistantGoogleEvent(selected);
+        else if (googleStatus.connected && updated.expectedPaymentDate) await syncSaleWithGoogle(updated);
+      }
+      setAdminAssistantPreview(null);
+      return;
+    }
+
+    const total = getSaleTotal(selected);
+    const updated: Sale = { ...selected, status: "pago", paidAt: `${action.date ?? toLocalDateInput()}T12:00:00.000Z`, amountPaid: total, remainingAmount: 0, expectedPaymentDate: undefined };
+    setSales((current) => current.map((sale) => sale.id === selected.id ? updated : sale));
+    setAdminAssistantResult(`A cobrança de ${selected.customerName} foi marcada como recebida.`);
+    if (adminAssistantSyncGoogle && selected.googleCalendarEventId) await removeAssistantGoogleEvent(selected);
+    setAdminAssistantPreview(null);
   }
 
   function registerSale(event: FormEvent<HTMLFormElement>) {
@@ -1682,6 +1865,7 @@ export default function AdminPage() {
         <nav className="flex flex-wrap gap-2 rounded-lg border border-gold/20 bg-white/[0.035] p-2">
           {[
             ["#vendas", "Vendas"],
+            ["#assistente-administrativo", "Assistente administrativo"],
             ["#agenda-recebimentos", "Agenda de recebimentos"],
             ["#estoque-e-custos", "Estoque e custos"],
             ["#relatorios", "Relatórios"],
@@ -1720,6 +1904,107 @@ export default function AdminPage() {
             </div>
           </div>
           {googleMessage ? <p className="mt-4 rounded-md border border-white/10 bg-black/40 p-3 text-sm text-stone-300">{googleMessage}</p> : null}
+        </section>
+
+        <section id="assistente-administrativo" className="scroll-mt-28 rounded-xl border border-emerald-400/25 bg-gradient-to-br from-emerald-500/10 to-black/50 p-5 sm:p-7">
+          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-300">Texto ou voz, processamento local</p>
+          <h2 className="mt-2 text-3xl font-semibold text-white">Assistente Administrativo</h2>
+          <p className="mt-3 max-w-3xl text-sm leading-7 text-stone-400">
+            Consulte cobranças ou descreva uma alteração. O assistente usa regras locais e sempre mostra uma prévia antes de modificar vendas ou estoque.
+          </p>
+          <textarea
+            value={adminAssistantText}
+            onChange={(event) => { setAdminAssistantText(event.target.value); setAdminAssistantPreview(null); setAdminAssistantResult(""); }}
+            rows={3}
+            placeholder="Ex.: Caique pagou ontem via Pix os 24 reais que estava devendo"
+            className="mt-5 w-full resize-none rounded-lg border border-emerald-400/25 bg-black/70 px-4 py-3 text-white outline-none focus:border-emerald-300"
+          />
+          <div className="mt-3 grid gap-2 sm:flex sm:flex-wrap">
+            <button type="button" onClick={() => interpretAdministrativeCommand()} disabled={!adminAssistantText.trim() || isAdminAssistantListening}
+              className="min-h-12 rounded-md bg-emerald-300 px-5 text-xs font-bold uppercase tracking-[0.14em] text-black disabled:opacity-40">
+              Interpretar comando
+            </button>
+            {!isAdminAssistantListening ? (
+              <button type="button" onClick={startAdminAssistantVoice}
+                className="min-h-12 rounded-md border border-emerald-400/40 px-5 text-xs font-bold uppercase tracking-[0.14em] text-emerald-200">
+                Falar comando
+              </button>
+            ) : (
+              <>
+                <button type="button" onClick={cancelAdminAssistantVoice}
+                  className="min-h-12 rounded-md border border-red-400/40 px-5 text-xs font-bold uppercase tracking-[0.14em] text-red-200">
+                  X Cancelar
+                </button>
+                <button type="button" onClick={finishAdminAssistantVoice}
+                  className="min-h-12 rounded-md border border-emerald-400/40 px-5 text-xs font-bold uppercase tracking-[0.14em] text-emerald-200">
+                  ✓ Concluir e interpretar
+                </button>
+              </>
+            )}
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {["Quem está me devendo?", "Quem tenho que cobrar hoje?", "Caique pagou 24 no Pix ontem", "Remarca a cobrança da Suzana para dia 15"].map((example) => (
+              <button key={example} type="button" onClick={() => { setAdminAssistantText(example); interpretAdministrativeCommand(example); }}
+                className="min-h-10 rounded-full border border-white/15 px-3 text-xs text-stone-300 hover:border-emerald-400/40">
+                {example}
+              </button>
+            ))}
+          </div>
+
+          {adminAssistantPreview ? (
+            <div className="mt-6 rounded-lg border border-white/10 bg-black/50 p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-semibold text-white">{adminAssistantPreview.title}</h3>
+                <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${adminAssistantPreview.confidence === "alta" ? "border-emerald-400/30 text-emerald-300" : adminAssistantPreview.confidence === "media" ? "border-amber-400/30 text-amber-200" : "border-red-400/30 text-red-200"}`}>
+                  Confiança {adminAssistantPreview.confidence}
+                </span>
+              </div>
+              <p className="mt-3 whitespace-pre-line text-sm leading-7 text-stone-300">{adminAssistantPreview.message}</p>
+              {adminAssistantPreview.warnings.map((warning) => (
+                <p key={warning} className="mt-3 rounded-md border border-amber-400/25 bg-amber-400/10 p-3 text-sm text-amber-100">{warning}</p>
+              ))}
+              {adminAssistantPreview.action?.candidateSaleIds && adminAssistantPreview.action.candidateSaleIds.length > 1 ? (
+                <label className="mt-4 block">
+                  <span className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Escolha a venda</span>
+                  <select value={adminAssistantSaleId} onChange={(event) => setAdminAssistantSaleId(event.target.value)}
+                    className="mt-2 w-full rounded-md border border-emerald-400/25 bg-black px-4 py-3 text-sm text-white outline-none">
+                    <option value="">Selecione a pendência correta</option>
+                    {adminAssistantPreview.matches.map((sale) => (
+                      <option key={sale.id} value={sale.id}>
+                        {new Date(sale.createdAt).toLocaleDateString("pt-BR")} — {summarizeSaleItems(sale)} — {formatCurrency(getRemainingAmount(sale))}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              {adminAssistantPreview.requiresConfirmation && (() => {
+                const selected = sales.find((sale) => sale.id === (adminAssistantPreview.action?.saleId ?? adminAssistantSaleId));
+                if (!selected?.googleCalendarEventId) return null;
+                const label = adminAssistantPreview.intent === "remarcar_cobranca" || (adminAssistantPreview.intent === "registrar_pagamento" && adminAssistantPreview.action?.remainingAfter !== undefined)
+                  ? "Atualizar lembrete no Google Agenda" : "Remover lembrete do Google Agenda";
+                return (
+                  <label className="mt-4 flex items-center gap-3 rounded-md border border-blue-400/20 bg-blue-400/10 p-3 text-sm text-blue-100">
+                    <input type="checkbox" checked={adminAssistantSyncGoogle} onChange={(event) => setAdminAssistantSyncGoogle(event.target.checked)} />
+                    {label}
+                  </label>
+                );
+              })()}
+              {adminAssistantPreview.requiresConfirmation ? (
+                <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+                  <button type="button" onClick={() => { setAdminAssistantPreview(null); setAdminAssistantResult("Ação cancelada. Nenhum dado foi alterado."); }}
+                    className="min-h-11 rounded-md border border-white/20 px-5 text-xs font-bold uppercase tracking-[0.14em] text-stone-300">
+                    Cancelar
+                  </button>
+                  <button type="button" onClick={() => void confirmAdministrativeAction()}
+                    disabled={Boolean(adminAssistantPreview.action?.candidateSaleIds?.length && !adminAssistantPreview.action.saleId && !adminAssistantSaleId)}
+                    className="min-h-11 rounded-md bg-emerald-300 px-5 text-xs font-bold uppercase tracking-[0.14em] text-black disabled:opacity-40">
+                    Confirmar ação
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {adminAssistantResult ? <p className="mt-4 rounded-md border border-emerald-400/20 bg-black/40 p-3 text-sm text-emerald-100">{adminAssistantResult}</p> : null}
         </section>
 
         <section id="agenda-recebimentos" className="scroll-mt-28 rounded-xl border border-gold/25 bg-white/[0.04] p-5 sm:p-7">
