@@ -6,6 +6,7 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3001";
 const staticRoutes = [
   "",
   "/catalogo",
+  "/catalogo-olfativo",
   "/colecoes",
   "/apresentacao",
   "/sobre",

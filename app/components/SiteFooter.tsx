@@ -33,6 +33,12 @@ export default function SiteFooter() {
             Catalogo
           </Link>
           <Link
+            href="/catalogo-olfativo"
+            className="transition hover:text-gold-light"
+          >
+            Catalogo Olfativo
+          </Link>
+          <Link
             href="/apresentacao"
             className="transition hover:text-gold-light"
           >
