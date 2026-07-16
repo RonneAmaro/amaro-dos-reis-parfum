@@ -34,17 +34,16 @@ export function CatalogoViewer({ whatsappUrl }: CatalogoViewerProps) {
       <div className="relative mx-auto max-w-7xl">
         <div className="text-center">
           <p className="text-xs font-semibold uppercase tracking-[.32em] text-gold">
-            Experiência digital
+            Material complementar
           </p>
           <h2
             id="catalogo-online-title"
             className="mt-4 text-3xl font-semibold text-white sm:text-4xl"
           >
-            Folheie o catálogo online
+            Também disponível em formato de catálogo
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-stone-400 sm:text-base">
-            Veja todas as páginas do catálogo diretamente aqui, sem precisar fazer
-            download.
+            Prefere o material tradicional? Folheie ou baixe o catálogo em PDF.
           </p>
         </div>
 
