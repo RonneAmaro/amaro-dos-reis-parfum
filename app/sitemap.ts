@@ -7,6 +7,7 @@ const staticRoutes = [
   "",
   "/catalogo",
   "/catalogo-olfativo",
+  "/escolha-seu-perfume",
   "/colecoes",
   "/apresentacao",
   "/sobre",

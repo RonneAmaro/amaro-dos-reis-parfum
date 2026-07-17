@@ -33,6 +33,12 @@ export default function SiteHeader() {
             Catalogo
           </Link>
           <Link
+            href="/escolha-seu-perfume"
+            className="transition hover:text-gold-light"
+          >
+            Guia
+          </Link>
+          <Link
             href="/apresentacao"
             className="transition hover:text-gold-light"
           >

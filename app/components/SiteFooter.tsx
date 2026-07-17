@@ -39,6 +39,12 @@ export default function SiteFooter() {
             Catalogo Olfativo
           </Link>
           <Link
+            href="/escolha-seu-perfume"
+            className="transition hover:text-gold-light"
+          >
+            Guia do Perfume
+          </Link>
+          <Link
             href="/apresentacao"
             className="transition hover:text-gold-light"
           >
