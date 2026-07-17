@@ -3,9 +3,13 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
-  availabilityLabels,
   lineLabels,
 } from "@/lib/perfumes";
+import { PublicAvailabilityBadge } from "@/app/components/PublicAvailabilityBadge";
+import {
+  getSafePublicAvailability,
+  type PublicAvailabilityStatus,
+} from "@/lib/publicAvailability";
 import {
   getPublicPerfumes,
   type PublicPerfume,
@@ -14,7 +18,6 @@ import {
 import {
   createArabPremiumMessage,
   createGiftRecommendationMessage,
-  createPerfumeInterestMessage,
   createPerfumeRecommendationMessage,
   createWhatsAppLink,
 } from "@/lib/whatsapp";
@@ -28,6 +31,15 @@ const filters = [
   "Feminino",
   "Tradicional R$ 80",
   "Arabe Premium R$ 120",
+];
+
+const availabilityFilters: { value: "all" | PublicAvailabilityStatus; label: string }[] = [
+  { value: "all", label: "Todos" },
+  { value: "available", label: "Disponíveis" },
+  { value: "limited", label: "Poucas unidades" },
+  { value: "on_order", label: "Sob encomenda" },
+  { value: "sold_out", label: "Esgotados" },
+  { value: "unknown", label: "Consultar" },
 ];
 
 const momentCards = [
@@ -131,6 +143,7 @@ export function CatalogClient() {
   const [isLoading, setIsLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState("Todas");
+  const [availabilityFilter, setAvailabilityFilter] = useState<"all" | PublicAvailabilityStatus>("all");
   const recommendationHref = createWhatsAppLink(
     createPerfumeRecommendationMessage()
   );
@@ -179,10 +192,12 @@ export function CatalogClient() {
 
       return (
         matchesFilter(perfume, activeFilter) &&
+        (availabilityFilter === "all" ||
+          getSafePublicAvailability(perfume).status === availabilityFilter) &&
         (!normalizedQuery || searchText.includes(normalizedQuery))
       );
     });
-  }, [activeFilter, perfumes, query]);
+  }, [activeFilter, availabilityFilter, perfumes, query]);
 
   if (isLoading) {
     return (
@@ -310,6 +325,25 @@ export function CatalogClient() {
                   );
                 })}
               </div>
+              <p className="mt-5 text-[10px] font-semibold uppercase tracking-[.2em] text-stone-500">
+                Disponibilidade
+              </p>
+              <div className="-mx-5 mt-3 flex gap-2 overflow-x-auto px-5 pb-2 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0">
+                {availabilityFilters.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setAvailabilityFilter(value)}
+                    className={`min-h-10 shrink-0 rounded-full border px-4 text-[10px] font-semibold uppercase tracking-[.1em] ${
+                      availabilityFilter === value
+                        ? "border-white/60 bg-white/15 text-white"
+                        : "border-white/15 bg-white/[.04] text-stone-300"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -364,6 +398,9 @@ export function CatalogClient() {
           ) : (
             <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
               {filteredPerfumes.map((perfume) => (
+                (() => {
+                  const availability = getSafePublicAvailability(perfume);
+                  return (
                 <article
                   key={perfume.slug}
                   className="group flex min-h-[560px] flex-col overflow-hidden border border-gold/20 bg-[linear-gradient(180deg,rgba(216,183,106,0.10),rgba(8,7,5,0.96)_34%,rgba(3,3,3,1))] shadow-[0_24px_70px_rgba(0,0,0,0.35)] transition hover:-translate-y-1 hover:border-gold/55 hover:shadow-[0_28px_90px_rgba(216,183,106,0.10)]"
@@ -424,9 +461,7 @@ export function CatalogClient() {
                       <p className="text-[10px] uppercase tracking-[0.22em] text-stone-500">
                         Disponibilidade
                       </p>
-                      <p className="mt-2 text-gold-light">
-                        {availabilityLabels[perfume.availabilityStatus]}
-                      </p>
+                      <PublicAvailabilityBadge availability={availability} showDescription className="mt-2" />
                     </div>
                   </div>
 
@@ -456,7 +491,7 @@ export function CatalogClient() {
                   <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                     <a
                       href={createWhatsAppLink(
-                        createPerfumeInterestMessage(perfume.name)
+                        `Olá! Tenho interesse no perfume ${perfume.name} da AMARO DOS REIS PARFUM. No site ele aparece como “${availability.label}”. Pode confirmar disponibilidade e forma de pagamento?`
                       )}
                       target="_blank"
                       rel="noreferrer"
@@ -473,6 +508,8 @@ export function CatalogClient() {
                   </div>
                   </div>
                 </article>
+                  );
+                })()
               ))}
             </div>
           )}

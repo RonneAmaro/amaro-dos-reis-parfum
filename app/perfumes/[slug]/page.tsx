@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getPerfumeExperience } from "@/lib/perfumeExperience";
-import { availabilityLabels } from "@/lib/perfumes";
+import { PublicAvailabilityBadge } from "@/app/components/PublicAvailabilityBadge";
+import { getSafePublicAvailability } from "@/lib/publicAvailability";
 import {
   getPublicPerfumes,
   type PublicPerfume,
@@ -15,8 +16,8 @@ function formatPrice(value: number) {
   }).format(value);
 }
 
-function interestMessage(name: string) {
-  return `Olá! Tenho interesse no perfume ${name} da AMARO DOS REIS PARFUM. Vi a página da fragrância e gostaria de saber se está disponível.`;
+function interestMessage(name: string, availability: string) {
+  return `Olá! Tenho interesse no perfume ${name}. Vi que ele está como “${availability}”. Pode confirmar para mim?`;
 }
 
 function relatedPerfumes(perfume: PublicPerfume, perfumes: PublicPerfume[]) {
@@ -89,7 +90,8 @@ export default async function PerfumePage({
 
   const experience = getPerfumeExperience(perfume.slug);
   const related = relatedPerfumes(perfume, publicPerfumes.data);
-  const whatsappHref = createWhatsAppLink(interestMessage(perfume.name));
+  const availability = getSafePublicAvailability(perfume);
+  const whatsappHref = createWhatsAppLink(interestMessage(perfume.name, availability.label));
   const pyramid = [
     ["Topo", experience.topNotes],
     ["Coração", experience.heartNotes],
@@ -115,9 +117,7 @@ export default async function PerfumePage({
               <span className="border border-white/20 bg-black/20 px-3 py-2 text-white/80">
                 {perfume.line === "arabic_premium" ? "Árabe Premium" : "Tradicional"}
               </span>
-              <span className="border border-white/20 bg-black/20 px-3 py-2 text-white/80">
-                {availabilityLabels[perfume.availabilityStatus]}
-              </span>
+              <PublicAvailabilityBadge availability={availability} />
             </div>
             <h1 className="mt-7 text-5xl font-semibold uppercase leading-none tracking-[.06em] text-white sm:text-7xl lg:text-8xl">
               {perfume.name}
@@ -172,6 +172,17 @@ export default async function PerfumePage({
               <p className="mt-1 text-xs text-white/45">50 ml</p>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="border-b border-white/10 px-6 py-10 sm:px-10 lg:px-12">
+        <div className="premium-surface mx-auto flex max-w-7xl flex-col justify-between gap-5 p-6 sm:flex-row sm:items-center sm:p-8">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[.24em] text-gold">Disponibilidade</p>
+            <PublicAvailabilityBadge availability={availability} showDescription className="mt-4" />
+            <p className="mt-4 text-sm leading-6 text-stone-400">Para confirmar disponibilidade e prazo, fale comigo no WhatsApp.</p>
+          </div>
+          <a href={whatsappHref} target="_blank" rel="noreferrer" className="inline-flex min-h-12 shrink-0 items-center justify-center rounded-full bg-gold px-7 text-center text-xs font-semibold uppercase tracking-[.14em] text-black hover:bg-gold-light">Consultar no WhatsApp</a>
         </div>
       </section>
 

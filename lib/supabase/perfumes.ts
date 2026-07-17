@@ -14,7 +14,6 @@ export type PublicPerfumeSource = "supabase" | "local";
 export type PublicPerfume = Perfume & {
   category: "masculino" | "feminino" | "unissex";
   bottleType: "tradicional" | "arabe";
-  defaultUnitCost?: number;
   topNotes: string[];
   heartNotes: string[];
   baseNotes: string[];
@@ -85,8 +84,6 @@ function localPerfumes(source: PublicPerfumeSource = "local"): PublicPerfume[] {
       slug,
       category,
       bottleType: lineToBottleType(perfume.line),
-      defaultUnitCost:
-        perfume.line === "arabic_premium" ? 41.4 : 24.75,
       price: perfume.priceCents / 100,
       olfactiveFamily: perfume.family,
       topNotes: [],
@@ -120,12 +117,11 @@ function fallbackForRow(row: PerfumeRow): PublicPerfume {
     whatsappMessage: `Olá! Tenho interesse no perfume ${row.name} da Amaro dos Reis Parfum. Pode me passar mais informações?`,
     indicatedFor: ["Dia a dia", "presença elegante"],
     tags: [],
-    availabilityStatus: "available" as AvailabilityStatus,
+    availabilityStatus: "unknown" as AvailabilityStatus,
     price,
     olfactiveFamily: "Família olfativa autoral",
     category,
     bottleType: row.bottle_type === "arabe" ? "arabe" : "tradicional",
-    defaultUnitCost: parseNumber(row.default_unit_cost),
     topNotes: [],
     heartNotes: [],
     baseNotes: [],
@@ -164,8 +160,6 @@ function mergeSupabaseWithLocal(row: PerfumeRow): PublicPerfume {
     line,
     price,
     priceCents: Math.round(price * 100),
-    defaultUnitCost:
-      parseNumber(row.default_unit_cost) ?? base.defaultUnitCost,
     dataSource: "supabase",
   };
 }
@@ -183,7 +177,7 @@ export async function getSupabasePerfumes(): Promise<SupabasePerfumeResult> {
   const { data, error } = await client
     .from("perfumes")
     .select(
-      "id, slug, name, inspiration, collection, category, bottle_type, default_sale_price, default_unit_cost, created_at, updated_at"
+      "id, slug, name, inspiration, collection, category, bottle_type, default_sale_price, created_at, updated_at"
     )
     .order("collection", { ascending: true })
     .order("name", { ascending: true });

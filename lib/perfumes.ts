@@ -1,4 +1,9 @@
-export type AvailabilityStatus = "available" | "limited" | "on_order";
+export type AvailabilityStatus =
+  | "available"
+  | "limited"
+  | "on_order"
+  | "sold_out"
+  | "unknown";
 export type PerfumeLine = "traditional" | "arabic_premium";
 export type PerfumeAudience = "Masculino" | "Feminino" | "Unissex";
 
@@ -288,6 +293,8 @@ export const availabilityLabels: Record<AvailabilityStatus, string> = {
   available: "Disponivel",
   limited: "Poucas unidades",
   on_order: "Sob encomenda",
+  sold_out: "Esgotado",
+  unknown: "Consultar disponibilidade",
 };
 
 export const lineLabels: Record<PerfumeLine, string> = {

@@ -1,4 +1,5 @@
 import { perfumes, type Perfume, type PerfumeLine } from "@/lib/perfumes";
+import { getSafePublicAvailability } from "@/lib/publicAvailability";
 
 export type GuideRecipient = "self" | "gift" | "unsure";
 export type GuideProfile = "male" | "female" | "unisex" | "any";
@@ -110,6 +111,9 @@ export function scorePerfumeForGuide(perfume: Perfume, rawAnswers: Partial<Perfu
     score += 100;
     matches.add(`estilo ${answers.reference}`);
   }
+  const availability = getSafePublicAvailability(perfume);
+  if (availability.status === "sold_out") score -= 12;
+  if (availability.status === "available") score += 2;
   return { score, matchedTags: [...matches] };
 }
 

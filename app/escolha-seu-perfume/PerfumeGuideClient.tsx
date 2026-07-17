@@ -5,6 +5,8 @@ import { useMemo, useState } from "react";
 import { getPerfumeGuideRecommendations, type PerfumeGuideAnswers } from "@/lib/perfumeGuide";
 import { formatPerfumePrice, lineLabels } from "@/lib/perfumes";
 import { createWhatsAppLink } from "@/lib/whatsapp";
+import { PublicAvailabilityBadge } from "@/app/components/PublicAvailabilityBadge";
+import { getSafePublicAvailability } from "@/lib/publicAvailability";
 
 type Question = {
   key: keyof PerfumeGuideAnswers;
@@ -117,7 +119,8 @@ export function PerfumeGuideClient() {
               </div>
               <div className="mt-10 grid gap-5 md:grid-cols-2">
                 {recommendations.map(({ perfume, reason, matchedTags }, index) => {
-                  const message = `Olá! Fiz o Guia Escolha seu Perfume e gostei da recomendação ${perfume.name} (${lineLabels[perfume.line]}, ${formatPerfumePrice(perfume)}, referência olfativa: ${perfume.inspiration}). Pode me falar mais sobre ele?`;
+                  const availability = getSafePublicAvailability(perfume);
+                  const message = `Olá! Fiz o Guia Escolha seu Perfume e gostei da recomendação ${perfume.name} (${lineLabels[perfume.line]}, ${formatPerfumePrice(perfume)}, referência olfativa: ${perfume.inspiration}). No site ele aparece como “${availability.label}”. Pode me falar mais sobre ele?`;
                   return (
                     <article key={perfume.slug} className={`premium-surface flex flex-col p-6 sm:p-7 ${index === 0 ? "border-gold/60 md:col-span-2" : ""}`}>
                       <div className="flex items-start justify-between gap-4">
@@ -125,6 +128,8 @@ export function PerfumeGuideClient() {
                         <p className="shrink-0 text-xl font-semibold text-gold-light">{formatPerfumePrice(perfume)}</p>
                       </div>
                       <p className="mt-2 text-xs text-stone-500">Referência olfativa: {perfume.inspiration}</p>
+                      <PublicAvailabilityBadge availability={availability} showDescription className="mt-4" />
+                      {availability.status === "sold_out" ? <p className="mt-3 text-xs leading-5 text-rose-200">Pode estar indisponível no momento. Consulte reposição.</p> : null}
                       <p className="mt-5 text-sm leading-7 text-stone-300">{reason}</p>
                       <div className="mt-5 flex flex-wrap gap-2">
                         <span className="rounded-full border border-gold/25 px-3 py-1.5 text-[10px] uppercase tracking-[.12em] text-gold-light">{perfume.collection}</span>

@@ -6,7 +6,11 @@ import {
   getPerfumeExperience,
   type PerfumeExperience,
 } from "@/lib/perfumeExperience";
-import { availabilityLabels } from "@/lib/perfumes";
+import { PublicAvailabilityBadge } from "@/app/components/PublicAvailabilityBadge";
+import {
+  getSafePublicAvailability,
+  type PublicAvailabilityStatus,
+} from "@/lib/publicAvailability";
 import {
   getPublicPerfumes,
   type PublicPerfume,
@@ -21,6 +25,15 @@ const filters = [
   ["amadeirado", "Amadeirados"], ["presente", "Presentes"],
   ["dia a dia", "Dia a dia"], ["noite", "Noite"],
 ] as const;
+
+const availabilityFilters: { value: "all" | PublicAvailabilityStatus; label: string }[] = [
+  { value: "all", label: "Todos" },
+  { value: "available", label: "Disponíveis" },
+  { value: "limited", label: "Poucas unidades" },
+  { value: "on_order", label: "Sob encomenda" },
+  { value: "sold_out", label: "Esgotados" },
+  { value: "unknown", label: "Consultar" },
+];
 
 const quickChoices = [
   ["marcante", "Quero algo marcante"], ["doce", "Quero algo doce"],
@@ -40,8 +53,9 @@ function normalize(value: string) {
   return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
-function interestMessage(name: string) {
-  return `Olá! Tenho interesse no perfume ${name} da AMARO DOS REIS PARFUM. Vi no catálogo olfativo e gostaria de saber se está disponível.`;
+function interestMessage(perfume: PublicPerfume) {
+  const availability = getSafePublicAvailability(perfume);
+  return `Olá! Tenho interesse no perfume ${perfume.name} da AMARO DOS REIS PARFUM. No site ele aparece como “${availability.label}”. Pode confirmar disponibilidade e forma de pagamento?`;
 }
 
 function searchableText(perfume: PublicPerfume, experience: PerfumeExperience) {
@@ -82,6 +96,7 @@ function NotesPyramid({ experience, compact = false }: { experience: PerfumeExpe
 
 function PerfumeCard({ perfume, onOpen }: { perfume: PublicPerfume; onOpen: () => void }) {
   const experience = getPerfumeExperience(perfume.slug);
+  const availability = getSafePublicAvailability(perfume);
   const price = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(perfume.price);
   return (
     <article
@@ -101,7 +116,7 @@ function PerfumeCard({ perfume, onOpen }: { perfume: PublicPerfume; onOpen: () =
         <div className="mt-5 flex flex-wrap gap-2 text-[9px] font-semibold uppercase tracking-[.13em]">
           <span className="border border-white/20 bg-black/25 px-3 py-2 text-white/85">{perfume.line === "arabic_premium" ? "Árabe Premium" : "Tradicional"}</span>
           <span className="border border-white/20 bg-black/25 px-3 py-2 text-white/85">{perfume.audience}</span>
-          <span className="border border-white/20 bg-black/25 px-3 py-2 text-white/85">{availabilityLabels[perfume.availabilityStatus]}</span>
+          <PublicAvailabilityBadge availability={availability} />
         </div>
         <p className="mt-5 text-sm font-semibold" style={{ color: experience.accentColor }}>{experience.family}</p>
         <p className="mt-3 text-sm leading-7 text-white/75">{experience.shortStory}</p>
@@ -115,7 +130,7 @@ function PerfumeCard({ perfume, onOpen }: { perfume: PublicPerfume; onOpen: () =
         </div>
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
           <button type="button" onClick={onOpen} className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/40 bg-black/20 px-4 text-xs font-semibold uppercase tracking-[.12em] text-white hover:bg-white/10">Conhecer fragrância</button>
-          <a href={createWhatsAppLink(interestMessage(perfume.name))} target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center justify-center rounded-full px-4 text-xs font-semibold uppercase tracking-[.12em] text-black transition hover:brightness-110" style={{ backgroundColor: experience.accentColor }}>Quero este</a>
+          <a href={createWhatsAppLink(interestMessage(perfume))} target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center justify-center rounded-full px-4 text-xs font-semibold uppercase tracking-[.12em] text-black transition hover:brightness-110" style={{ backgroundColor: experience.accentColor }}>Quero este</a>
         </div>
       </div>
     </article>
@@ -124,6 +139,7 @@ function PerfumeCard({ perfume, onOpen }: { perfume: PublicPerfume; onOpen: () =
 
 function PerfumeModal({ perfume, onClose }: { perfume: PublicPerfume; onClose: () => void }) {
   const experience = getPerfumeExperience(perfume.slug);
+  const availability = getSafePublicAvailability(perfume);
   const price = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(perfume.price);
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => event.key === "Escape" && onClose();
@@ -138,6 +154,7 @@ function PerfumeModal({ perfume, onClose }: { perfume: PublicPerfume; onClose: (
         <div className="px-5 pb-8 sm:px-9 sm:pb-10">
           <p className="text-xs uppercase tracking-[.22em] text-white/55">{perfume.collection} • {perfume.line === "arabic_premium" ? "Árabe Premium" : "Tradicional"}</p>
           <div className="mt-3 flex flex-wrap items-end justify-between gap-3"><div><h2 id="perfume-modal-title" className="text-3xl font-semibold tracking-[.08em] text-white sm:text-5xl">{perfume.name}</h2><p className="mt-2 text-sm text-white/55">Inspirado em {perfume.inspiration}</p></div><p className="text-3xl font-semibold" style={{ color: experience.accentColor }}>{price}</p></div>
+          <PublicAvailabilityBadge availability={availability} showDescription className="mt-5" />
           <p className="mt-6 max-w-3xl text-base leading-8 text-white/80">{perfume.longDescription || perfume.description} {experience.shortStory}</p>
           <div className="mt-7"><h3 className="mb-3 text-xs font-semibold uppercase tracking-[.2em] text-white/60">Pirâmide olfativa</h3><NotesPyramid experience={experience} /></div>
           <div className="mt-7 grid gap-5 lg:grid-cols-2">
@@ -146,7 +163,7 @@ function PerfumeModal({ perfume, onClose }: { perfume: PublicPerfume; onClose: (
           </div>
           <div className="mt-7 grid grid-cols-3 gap-2 text-center"><div className="border border-white/10 bg-black/25 p-3"><p className="text-[9px] uppercase text-white/45">Intensidade</p><p className="mt-2 text-xs text-white">{experience.intensity}</p></div><div className="border border-white/10 bg-black/25 p-3"><p className="text-[9px] uppercase text-white/45">Projeção</p><p className="mt-2 text-xs text-white">{experience.projection}</p></div><div className="border border-white/10 bg-black/25 p-3"><p className="text-[9px] uppercase text-white/45">Longevidade</p><p className="mt-2 text-xs text-white">{experience.longevity}</p></div></div>
           <div className="mt-7 border-l-2 pl-4" style={{ borderColor: experience.accentColor }}><p className="text-xs uppercase tracking-[.18em] text-white/50">Para quem é</p><p className="mt-2 text-sm leading-7 text-white/80">{experience.customerProfile}</p></div>
-          <div className="mt-8 grid gap-3 sm:grid-cols-2"><a href={createWhatsAppLink(interestMessage(perfume.name))} target="_blank" rel="noreferrer" className="inline-flex min-h-13 items-center justify-center rounded-full px-6 text-xs font-semibold uppercase tracking-[.14em] text-black" style={{ backgroundColor: experience.accentColor }}>Quero este</a><Link href={`/perfumes/${perfume.slug}`} className="inline-flex min-h-13 items-center justify-center rounded-full border border-white/35 px-6 text-xs font-semibold uppercase tracking-[.14em] text-white">Ver página completa</Link></div>
+          <div className="mt-8 grid gap-3 sm:grid-cols-2"><a href={createWhatsAppLink(interestMessage(perfume))} target="_blank" rel="noreferrer" className="inline-flex min-h-13 items-center justify-center rounded-full px-6 text-xs font-semibold uppercase tracking-[.14em] text-black" style={{ backgroundColor: experience.accentColor }}>Quero este</a><Link href={`/perfumes/${perfume.slug}`} className="inline-flex min-h-13 items-center justify-center rounded-full border border-white/35 px-6 text-xs font-semibold uppercase tracking-[.14em] text-white">Ver página completa</Link></div>
         </div>
       </div>
     </div>
@@ -158,11 +175,12 @@ export function CatalogoOlfativoClient() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
+  const [availabilityFilter, setAvailabilityFilter] = useState<"all" | PublicAvailabilityStatus>("all");
   const [selected, setSelected] = useState<PublicPerfume | null>(null);
   const catalogWhatsApp = createWhatsAppLink(createCatalogMessage());
 
   useEffect(() => { let active = true; getPublicPerfumes().then(({ data }) => { if (active) { setPerfumes(data); setLoading(false); } }); return () => { active = false; }; }, []);
-  const results = useMemo(() => { const terms = normalize(query).trim().split(/\s+/).filter(Boolean); return perfumes.filter((perfume) => { const experience = getPerfumeExperience(perfume.slug); return matchesFilter(perfume, experience, filter) && terms.every((term) => searchableText(perfume, experience).includes(term)); }); }, [filter, perfumes, query]);
+  const results = useMemo(() => { const terms = normalize(query).trim().split(/\s+/).filter(Boolean); return perfumes.filter((perfume) => { const experience = getPerfumeExperience(perfume.slug); const availability = getSafePublicAvailability(perfume); return matchesFilter(perfume, experience, filter) && (availabilityFilter === "all" || availability.status === availabilityFilter) && terms.every((term) => searchableText(perfume, experience).includes(term)); }); }, [availabilityFilter, filter, perfumes, query]);
   function applyChoice(value: string) { if (["arabic", "male", "female", "traditional"].includes(value)) { setFilter(value); setQuery(""); } else { setFilter("all"); setQuery(value); } document.getElementById("fragrancias")?.scrollIntoView({ behavior: "smooth" }); }
 
   return (
@@ -171,7 +189,7 @@ export function CatalogoOlfativoClient() {
 
       <section className="border-b border-white/10 px-6 py-16 sm:px-10 lg:px-12"><div className="mx-auto max-w-7xl"><p className="text-xs font-semibold uppercase tracking-[.3em] text-gold">Experiência por fragrância</p><div className="mt-4 grid gap-6 lg:grid-cols-[1fr_.8fr] lg:items-end"><h2 className="max-w-3xl text-3xl font-semibold leading-tight text-white sm:text-5xl">Cada perfume possui seu próprio ecossistema.</h2><p className="text-sm leading-7 text-stone-400 sm:text-base">Cores, acordes e notas traduzem a personalidade de cada criação. Explore com calma e encontre a assinatura que combina com você.</p></div><div className="mt-10 grid gap-3 sm:grid-cols-3"><div className="premium-surface p-5"><p className="text-gold">01</p><p className="mt-3 text-sm text-stone-300">Sinta a atmosfera e os acordes.</p></div><div className="premium-surface p-5"><p className="text-gold">02</p><p className="mt-3 text-sm text-stone-300">Conheça a pirâmide olfativa.</p></div><div className="premium-surface p-5"><p className="text-gold">03</p><p className="mt-3 text-sm text-stone-300">Escolha pela ocasião e personalidade.</p></div></div></div></section>
 
-      <section id="fragrancias" className="scroll-mt-24 px-6 py-16 sm:px-10 lg:px-12"><div className="mx-auto max-w-7xl"><div className="flex flex-col justify-between gap-3 md:flex-row md:items-end"><div><p className="text-xs font-semibold uppercase tracking-[.3em] text-gold">Vitrine olfativa</p><h2 className="mt-4 text-3xl font-semibold text-white">Encontre sua fragrância</h2></div><p className="text-sm text-stone-400">{loading ? "Carregando catálogo..." : `${results.length} fragrância${results.length === 1 ? "" : "s"}`}</p></div><label className="mt-8 block"><span className="sr-only">Buscar fragrância</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Busque por nome, referência, notas, acordes ou ocasião" className="min-h-14 w-full border border-gold/25 bg-black/50 px-5 text-sm text-white outline-none placeholder:text-stone-600 focus:border-gold" /></label><div className="-mx-6 mt-4 flex gap-2 overflow-x-auto px-6 pb-3 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0">{filters.map(([value, label]) => <button key={value} type="button" onClick={() => setFilter(value)} className={`min-h-11 shrink-0 rounded-full border px-4 text-xs font-semibold uppercase tracking-[.1em] ${filter === value ? "border-gold bg-gold text-black" : "border-gold/25 bg-gold/[.06] text-gold-light"}`}>{label}</button>)}</div>{!loading && results.length === 0 ? <div className="mt-8 border border-gold/20 p-10 text-center text-stone-400">Nenhuma fragrância encontrada. Experimente outro termo ou filtro.</div> : <div className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-3">{results.map((perfume) => <PerfumeCard key={perfume.slug} perfume={perfume} onOpen={() => setSelected(perfume)} />)}</div>}</div></section>
+      <section id="fragrancias" className="scroll-mt-24 px-6 py-16 sm:px-10 lg:px-12"><div className="mx-auto max-w-7xl"><div className="flex flex-col justify-between gap-3 md:flex-row md:items-end"><div><p className="text-xs font-semibold uppercase tracking-[.3em] text-gold">Vitrine olfativa</p><h2 className="mt-4 text-3xl font-semibold text-white">Encontre sua fragrância</h2></div><p className="text-sm text-stone-400">{loading ? "Carregando catálogo..." : `${results.length} fragrância${results.length === 1 ? "" : "s"}`}</p></div><label className="mt-8 block"><span className="sr-only">Buscar fragrância</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Busque por nome, referência, notas, acordes ou ocasião" className="min-h-14 w-full border border-gold/25 bg-black/50 px-5 text-sm text-white outline-none placeholder:text-stone-600 focus:border-gold" /></label><div className="-mx-6 mt-4 flex gap-2 overflow-x-auto px-6 pb-3 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0">{filters.map(([value, label]) => <button key={value} type="button" onClick={() => setFilter(value)} className={`min-h-11 shrink-0 rounded-full border px-4 text-xs font-semibold uppercase tracking-[.1em] ${filter === value ? "border-gold bg-gold text-black" : "border-gold/25 bg-gold/[.06] text-gold-light"}`}>{label}</button>)}</div><p className="mt-5 text-[10px] font-semibold uppercase tracking-[.2em] text-stone-500">Disponibilidade</p><div className="-mx-6 mt-3 flex gap-2 overflow-x-auto px-6 pb-3 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0">{availabilityFilters.map(({ value, label }) => <button key={value} type="button" onClick={() => setAvailabilityFilter(value)} className={`min-h-10 shrink-0 rounded-full border px-4 text-[10px] font-semibold uppercase tracking-[.1em] ${availabilityFilter === value ? "border-white/60 bg-white/15 text-white" : "border-white/15 bg-white/[.04] text-stone-300"}`}>{label}</button>)}</div>{!loading && results.length === 0 ? <div className="mt-8 border border-gold/20 p-10 text-center text-stone-400">Nenhuma fragrância encontrada. Experimente outro termo ou filtro.</div> : <div className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-3">{results.map((perfume) => <PerfumeCard key={perfume.slug} perfume={perfume} onOpen={() => setSelected(perfume)} />)}</div>}</div></section>
 
       <section className="border-y border-white/10 bg-[#090806] px-6 py-16 sm:px-10 lg:px-12"><div className="mx-auto max-w-7xl"><p className="text-xs font-semibold uppercase tracking-[.3em] text-gold">Curadoria rápida</p><div className="mt-4 flex flex-col justify-between gap-5 md:flex-row md:items-end"><div><h2 className="text-3xl font-semibold text-white">Não sabe qual escolher?</h2><p className="mt-3 text-sm text-stone-400">Conte como você quer se sentir e veja uma seleção compatível.</p></div><Link href="/escolha-seu-perfume" className="inline-flex min-h-12 shrink-0 items-center justify-center rounded-full bg-gold px-7 text-xs font-semibold uppercase tracking-[.14em] text-black hover:bg-gold-light">Me ajude a escolher</Link></div><div className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-3">{quickChoices.map(([value, label]) => <button key={label} type="button" onClick={() => applyChoice(value)} className="min-h-16 border border-gold/20 bg-gold/[.06] p-4 text-sm font-semibold text-gold-light transition hover:border-gold/60 hover:bg-gold/15">{label}</button>)}</div></div></section>
 
